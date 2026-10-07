@@ -56,6 +56,30 @@ const demoUsers = {
   employee: { employeeId: "CHN-EMP-001", email: "employee@demo.chinar.tv", password: "ChinarEmployee@2026", name: "Ahmad Rahimi", firstName: "Ahmad", role: "Employee", department: "Production" }
 };
 
+const workflowKey = "ctmsProjectWorkflow";
+const defaultWorkflow = {
+  project: "upcoming",
+  assignment: "pending",
+  invoice: "not_created",
+  payment: 0,
+  history: ["Project Created", "Employees Assigned"]
+};
+let workflow = JSON.parse(localStorage.getItem(workflowKey) || "null") || { ...defaultWorkflow };
+const saveWorkflow = () => localStorage.setItem(workflowKey, JSON.stringify(workflow));
+const workflowStatus = () => workflow.project === "closed" ? "Closed" : workflow.project === "completed" ? "Completed" : workflow.project === "in_progress" ? "In Progress" : "Upcoming";
+const workflowCard = (role) => {
+  const status = workflowStatus();
+  const amount = workflow.payment ? `$${(4500 - workflow.payment).toLocaleString()}` : "$4,500";
+  const actions = {
+    hoo: workflow.assignment === "pending" ? '<button class="button button-primary" data-workflow-action="accept-team">Confirm Team</button>' : '<button class="button button-secondary" data-workflow-action="replace">Replace Employee</button>',
+    employee: workflow.assignment === "pending" ? '<button class="button button-primary" data-workflow-action="accept">Accept Assignment</button><button class="button button-quiet" data-workflow-action="reject">Reject</button>' : workflow.project === "upcoming" ? '<button class="button button-primary" data-workflow-action="start">Start My Work</button>' : workflow.project === "in_progress" ? '<button class="button button-primary" data-workflow-action="complete-work">Complete My Work</button>' : '<span class="workflow-complete">Work completed</span>',
+    finance: workflow.project === "completed" && workflow.invoice === "not_created" ? '<button class="button button-primary" data-workflow-action="create-invoice">Create Invoice</button>' : workflow.invoice === "draft" ? '<button class="button button-primary" data-workflow-action="submit-invoice">Submit for Admin Review</button>' : workflow.invoice === "not_created" ? '<span class="workflow-muted">Available after project completion</span>' : workflow.invoice === "submitted" ? '<span class="workflow-status review">Awaiting Admin Review</span>' : workflow.invoice === "approved" && workflow.payment < 4500 ? '<button class="button button-primary" data-workflow-action="payment">Record Payment</button>' : '<span class="workflow-complete">Payment complete</span>',
+    admin: workflow.invoice === "submitted" ? '<button class="button button-primary" data-workflow-action="approve">Approve Invoice</button><button class="button button-secondary" data-workflow-action="return">Return</button>' : '<span class="workflow-muted">No invoices awaiting review</span>',
+    ceo: '<button class="button button-secondary" data-workflow-action="history">View Full History</button>'
+  };
+  return `<article class="workflow-card"><div class="workflow-card-head"><div><p class="eyebrow">CONNECTED DEMO WORKFLOW</p><h2>UNDP Community Awareness Videography</h2><p>PRJ-2026-0042 · UNDP · Kabul · Oct 12–15, 2026</p></div><span class="workflow-status ${status.toLowerCase().replace(" ", "-")}">${status}</span></div><div class="workflow-stepper"><span class="done">Project</span><i></i><span class="${workflow.assignment !== "pending" ? "done" : ""}">Team</span><i></i><span class="${["in_progress","completed","closed"].includes(workflow.project) ? "done" : ""}">Work</span><i></i><span class="${workflow.invoice !== "not_created" ? "done" : ""}">Invoice</span><i></i><span class="${workflow.payment >= 4500 ? "done" : ""}">Paid</span></div><div class="workflow-grid"><div><span>Project lead</span><b>Hafizullah Khan</b></div><div><span>Team</span><b>3 assigned · ${workflow.assignment === "pending" ? "Pending response" : "Confirmed"}</b></div><div><span>Invoice</span><b>${workflow.invoice === "not_created" ? "Not created" : workflow.invoice === "submitted" ? "Awaiting Admin Review" : workflow.invoice === "approved" ? "Approved" : "Draft"}</b></div><div><span>Balance</span><b>${amount}</b></div></div><div class="workflow-actions">${actions[role] || '<span class="workflow-muted">Read-only visibility for this role</span>'}</div></article>`;
+};
+
 const setCurrentUser = (user, remember = false) => {
   localStorage.setItem("ctmsCurrentUser", JSON.stringify(user));
   if (remember) localStorage.setItem("ctmsRememberedUser", JSON.stringify(user));
@@ -201,10 +225,46 @@ document.querySelectorAll(".password-toggle").forEach((button) => button.addEven
 
 function renderRoleWorkspace(role) {
   roleWorkspace.innerHTML = workspaceTemplates[role] || workspaceTemplates.employee;
+  if (["ceo", "hoo", "employee", "finance", "admin"].includes(role)) roleWorkspace.insertAdjacentHTML("beforeend", workflowCard(role));
   if (role === "finance") {
     roleWorkspace.querySelectorAll('[data-invoice-action="open"]').forEach((button) => button.addEventListener("click", openInvoiceWorkspace));
   }
   if (role === "ceo") bindCeoActions();
+}
+
+function handleWorkflowAction(action) {
+  const messages = {
+    accept: ["assignment", "accepted", "Assignment accepted"],
+    "accept-team": ["assignment", "accepted", "Team confirmed"],
+    start: ["project", "in_progress", "Work started successfully"],
+    "complete-work": ["project", "completed", "Work completed and sent to Finance"],
+    "create-invoice": ["invoice", "draft", "Invoice draft INV-2026-0042 created"],
+    approve: ["invoice", "approved", "Invoice approved"],
+    "submit-invoice": ["invoice", "submitted", "Invoice submitted for Admin review"],
+    return: ["invoice", "returned", "Invoice returned to Finance for correction"],
+    payment: ["payment", 4500, "Payment recorded successfully · Project closed"],
+    replace: ["assignment", "pending", "Replacement employee selector opened"],
+    reject: ["assignment", "rejected", "Assignment rejected and replacement required"],
+  };
+  if (action === "history") {
+    showToast("Project history: Created → Assigned → Upcoming → Work → Finance");
+    return;
+  }
+  const update = messages[action];
+  if (!update) return;
+  if (update[0] === "payment") {
+    workflow.payment = update[1];
+    workflow.project = "closed";
+  } else {
+    workflow[update[0]] = update[1];
+    if (action === "complete-work") workflow.invoice = "not_created";
+    if (action === "approve") workflow.payment = 0;
+  }
+  workflow.history.push(update[2]);
+  saveWorkflow();
+  const currentRole = roleSelect.value;
+  renderRoleWorkspace(currentRole);
+  showToast(update[2]);
 }
 
 function bindCeoActions() {
@@ -374,6 +434,8 @@ renderRoleWorkspace(roleSelect.value);
 roleWorkspace.addEventListener("click", (event) => {
   const action = event.target.closest("[data-invoice-action]")?.dataset.invoiceAction;
   if (action === "open" && !roleWorkspace.querySelector(".invoice-page")) openInvoiceWorkspace();
+  const workflowAction = event.target.closest("[data-workflow-action]")?.dataset.workflowAction;
+  if (workflowAction) handleWorkflowAction(workflowAction);
 });
 
 document.querySelector("#newAction").addEventListener("click", () => showToast("Action centre is ready"));
