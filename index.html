@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f6f8fb" />
+    <title>CTMS — Chinar TV Management System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <section class="auth-screen" id="authScreen">
+      <div class="auth-form-panel">
+        <div class="auth-form-wrap">
+          <div class="mobile-auth-logo"><img src="assets/chinar-logo.png" alt="Chinar logo" /></div>
+          <div class="auth-form-head"><span class="eyebrow">CHINAR TV MANAGEMENT SYSTEM</span><h2 id="authTitle">Welcome back</h2><p id="authCopy">Sign in to your account to access your workspace.</p></div>
+          <form id="loginForm" class="auth-form">
+            <label>Employee ID or Email<input type="text" name="identity" placeholder="Enter employee ID or email" required /></label>
+            <label>Password<div class="password-field"><input type="password" name="password" placeholder="Enter password" required /><button type="button" class="password-toggle">Show</button></div></label>
+            <div class="auth-options"><label class="check-label"><input type="checkbox" name="remember"> Remember me</label><button type="button" class="auth-link" id="forgotPassword">Forgot password?</button></div>
+            <button class="auth-submit" type="submit">Sign In<span>→</span></button>
+          </form>
+          <button class="demo-accounts-toggle" id="demoAccountsToggle" type="button">Demo Accounts <span>⌄</span></button>
+          <div class="demo-accounts" id="demoAccounts" hidden></div>
+          <p class="auth-authorized"><span>▣</span> Authorized Chinar TV personnel only</p>
+          <p class="auth-help">Need access? Contact your Admin or HR manager.</p>
+        </div>
+      </div>
+    </section>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="brand">
+          <div class="brand-mark"><img src="assets/chinar-logo.png" alt="" /></div>
+          <div>
+            <strong>CHINAR TV</strong>
+            <span>Management system</span>
+          </div>
+          <button class="icon-button sidebar-close" id="closeSidebar" aria-label="Close navigation">×</button>
+        </div>
+
+        <div class="workspace-label">Workspace</div>
+        <div class="workspace-switcher">
+          <div class="workspace-avatar">CT</div>
+          <div><strong>Chinar Television</strong><span>Operations workspace</span></div>
+          <span class="chevron">⌄</span>
+        </div>
+
+        <nav class="primary-nav" aria-label="Primary navigation">
+          <a class="nav-item active" href="#overview"><span class="nav-icon">⌂</span>Overview</a>
+          <a class="nav-item" href="#programming" data-view="programming"><span class="nav-icon">▦</span>Programming</a>
+          <a class="nav-item" href="#projects"><span class="nav-icon">◈</span>Projects <span class="nav-count">8</span></a>
+          <a class="nav-item" href="#people"><span class="nav-icon">♙</span>People</a>
+          <a class="nav-item" href="#assets"><span class="nav-icon">▣</span>Assets &amp; inventory</a>
+          <a class="nav-item" href="#finance"><span class="nav-icon">◒</span>Finance</a>
+        </nav>
+
+        <div class="workspace-label nav-section-label">Workspace tools</div>
+        <nav class="secondary-nav" aria-label="Workspace tools">
+          <a class="nav-item" href="#reports"><span class="nav-icon">▤</span>Reports</a>
+          <a class="nav-item" href="#calendar"><span class="nav-icon">◷</span>Calendar</a>
+          <a class="nav-item" href="#settings"><span class="nav-icon">⚙</span>Settings</a>
+        </nav>
+        <nav class="ceo-only-nav" id="ceoOnlyNav" aria-label="CEO oversight">
+          <div class="workspace-label nav-section-label">CEO oversight</div>
+          <a class="nav-item" href="#notifications"><span class="nav-icon">♢</span>Notifications <span class="nav-count">7</span></a>
+          <a class="nav-item" href="#audit"><span class="nav-icon">▤</span>Audit logs</a>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="help-card">
+            <span class="help-icon">?</span>
+            <div><strong>Need a hand?</strong><span>Visit the help centre</span></div>
+            <span class="arrow">↗</span>
+          </div>
+          <div class="user-mini">
+            <div class="avatar avatar-indigo" id="topbarAvatar">SA</div>
+            <div><strong>Sarah Ahmed</strong><span>Administrator</span></div>
+            <button class="icon-button" id="logoutButton" aria-label="Log out">↪</button>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <button class="icon-button menu-button" id="openSidebar" aria-label="Open navigation">☰</button>
+          <div class="breadcrumbs"><span>Workspace</span><b>/</b><strong>Overview</strong></div>
+          <div class="topbar-actions">
+            <button class="icon-button search-button" aria-label="Search">⌕</button>
+            <button class="icon-button notification-button" aria-label="Notifications"><span class="notification-dot"></span>♢</button>
+            <div class="topbar-divider"></div>
+            <div class="user-context">
+              <strong id="currentUserName">Sarah Ahmed</strong>
+              <span id="currentUserRole">Administrator</span>
+            </div>
+            <div class="role-select role-select-engine">
+              <select id="roleSelect" aria-hidden="true" tabindex="-1">
+                <option value="ceo">CEO</option>
+                <option value="hoo">Head of Operations</option>
+                <option value="production">Production</option>
+                <option value="finance">Finance</option>
+                <option value="hr">HR &amp; People</option>
+                <option value="employee">Employee</option>
+                <option value="technical">Technical / IT</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div class="avatar avatar-indigo" id="sidebarAvatar">SA</div>
+          </div>
+        </header>
+
+        <div class="page-content" id="overview">
+          <section class="page-heading">
+            <div>
+              <p class="eyebrow">Tuesday, 07 October 2026</p>
+              <h1 id="dashboardTitle">Good morning, Sarah <span class="wave">✦</span></h1>
+              <p class="heading-copy" id="dashboardCopy">Here’s what’s happening across Chinar TV today.</p>
+            </div>
+            <div class="heading-actions">
+              <button class="button button-secondary">Export report <span>↓</span></button>
+              <button class="button button-primary" id="newAction">+ New action</button>
+            </div>
+          </section>
+
+          <section class="metric-grid" aria-label="Key performance indicators">
+            <article class="metric-card">
+              <div class="metric-top"><span class="metric-label" id="metricLabelOne">Active productions</span><span class="metric-icon purple">◈</span></div>
+              <strong class="metric-value" id="metricOne">24</strong>
+              <div class="metric-meta"><span class="trend-up">↗ 12.5%</span><span>vs last month</span></div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-top"><span class="metric-label" id="metricLabelTwo">On-air this week</span><span class="metric-icon blue">◷</span></div>
+              <strong class="metric-value" id="metricTwo">86.4<span class="metric-unit"> hrs</span></strong>
+              <div class="metric-meta"><span class="trend-up">↗ 8.2%</span><span>vs last month</span></div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-top"><span class="metric-label" id="metricLabelThree">Team utilisation</span><span class="metric-icon green">♙</span></div>
+              <strong class="metric-value" id="metricThree">78<span class="metric-unit">%</span></strong>
+              <div class="metric-meta"><span class="trend-up">↗ 4.1%</span><span>vs last month</span></div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-top"><span class="metric-label" id="metricLabelFour">Monthly spend</span><span class="metric-icon orange">◒</span></div>
+              <strong class="metric-value" id="metricFour">$284.6<span class="metric-unit">k</span></strong>
+              <div class="metric-meta"><span class="trend-down">↘ 2.4%</span><span>vs last month</span></div>
+            </article>
+          </section>
+
+          <section id="roleWorkspace" class="role-workspace" aria-live="polite"></section>
+
+          <section class="content-grid">
+            <article class="panel schedule-panel" id="schedule">
+              <div class="panel-heading">
+                <div><h2 id="primaryPanelTitle">Broadcast schedule</h2><p id="primaryPanelCopy">Upcoming programmes and live productions</p></div>
+                <button class="text-button">View schedule <span>→</span></button>
+              </div>
+              <div class="schedule-list">
+                <div class="schedule-row">
+                  <div class="time-block"><strong>10:00</strong><span>AM</span></div>
+                  <div class="schedule-line"><span class="line-dot live"></span><span></span></div>
+                  <div class="schedule-details"><div><strong>Morning Focus</strong><span class="status live-status">Live now</span></div><p>News · Studio A · 60 min</p></div>
+                  <div class="schedule-owner"><div class="avatar avatar-orange">MK</div><span>M. Khan</span></div>
+                </div>
+                <div class="schedule-row">
+                  <div class="time-block"><strong>12:30</strong><span>PM</span></div>
+                  <div class="schedule-line"><span class="line-dot next"></span><span></span></div>
+                  <div class="schedule-details"><div><strong>Chinar Bulletin</strong><span class="status upcoming-status">Upcoming</span></div><p>News · Studio B · 30 min</p></div>
+                  <div class="schedule-owner"><div class="avatar avatar-blue">AS</div><span>A. Shah</span></div>
+                </div>
+                <div class="schedule-row">
+                  <div class="time-block"><strong>03:00</strong><span>PM</span></div>
+                  <div class="schedule-line"><span class="line-dot next"></span><span></span></div>
+                  <div class="schedule-details"><div><strong>Inside Pakistan</strong><span class="status upcoming-status">Upcoming</span></div><p>Documentary · Field unit 02 · 45 min</p></div>
+                  <div class="schedule-owner"><div class="avatar avatar-green">FN</div><span>F. Noor</span></div>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel activity-panel">
+              <div class="panel-heading"><div><h2 id="secondaryPanelTitle">Recent activity</h2><p id="secondaryPanelCopy">Latest updates from your workspace</p></div><button class="more-button">•••</button></div>
+              <div class="activity-list">
+                <div class="activity-item"><div class="activity-icon purple-bg">▣</div><div><p><strong>Production brief</strong> approved by <strong>O. Malik</strong></p><span>8 minutes ago</span></div></div>
+                <div class="activity-item"><div class="activity-icon blue-bg">♙</div><div><p><strong>3 crew members</strong> assigned to City Life</p><span>32 minutes ago</span></div></div>
+                <div class="activity-item"><div class="activity-icon orange-bg">$</div><div><p>Invoice <strong>INV-2841</strong> is due for review</p><span>1 hour ago</span></div></div>
+                <div class="activity-item"><div class="activity-icon green-bg">✓</div><div><p><strong>Studio B</strong> maintenance completed</p><span>2 hours ago</span></div></div>
+              </div>
+            </article>
+
+            <article class="panel performance-panel">
+              <div class="panel-heading">
+                <div><h2 id="tertiaryPanelTitle">Performance overview</h2><p id="tertiaryPanelCopy">Production output and revenue trend</p></div>
+                <button class="period-select">Last 12 months⌄</button>
+              </div>
+              <div class="chart-summary">
+                <div><strong>$682.56k</strong><span>Revenue</span></div>
+                <div><strong>7,845</strong><span>Total projects</span></div>
+                <div><strong class="chart-positive">+15.59%</strong><span>Working hours</span></div>
+              </div>
+              <div class="chart" aria-label="Performance chart">
+                <div class="chart-y"><span>100%</span><span>75%</span><span>50%</span><span>25%</span><span>0</span></div>
+                <div class="chart-plot">
+                  <div class="chart-grid-lines"><i></i><i></i><i></i><i></i><i></i></div>
+                  <svg viewBox="0 0 600 170" preserveAspectRatio="none" role="img" aria-label="Revenue trend">
+                    <polyline class="chart-line" points="0,135 50,120 100,126 150,99 200,103 250,74 300,82 350,55 400,60 450,37 500,49 550,22 600,35"></polyline>
+                  </svg>
+                  <div class="bar-row">
+                    <b style="height:32%"></b><b style="height:43%"></b><b style="height:38%"></b><b style="height:55%"></b><b style="height:48%"></b><b style="height:61%"></b><b style="height:58%"></b><b style="height:72%"></b><b style="height:68%"></b><b style="height:79%"></b><b style="height:87%"></b><b style="height:96%"></b>
+                  </div>
+                  <div class="chart-months"><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span></div>
+                </div>
+              </div>
+              <div class="chart-legend"><span><i class="legend-blue"></i>Projects</span><span><i class="legend-green"></i>Earnings</span><span><i class="legend-purple"></i>Growth</span></div>
+            </article>
+
+            <aside class="panel calendar-panel">
+              <div class="panel-heading"><div><h2>October 2026</h2><p>Today’s schedule</p></div><button class="more-button">•••</button></div>
+              <div class="mini-calendar"><div class="calendar-head"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div><div class="calendar-days"><span class="muted-day">27</span><span class="muted-day">28</span><span class="muted-day">29</span><span class="muted-day">30</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span class="today">7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span></div></div>
+              <div class="calendar-events">
+                <div><span class="event-dot teal"></span><p><b>08:00 AM - 09:30 AM</b><strong>Project Kickoff Meeting</strong></p><button>×</button></div>
+                <div><span class="event-dot purple-dot"></span><p><b>10:00 AM - 11:00 AM</b><strong>UI/UX Review Session</strong></p><button>×</button></div>
+                <div><span class="event-dot blue-dot"></span><p><b>02:00 PM - 03:30 PM</b><strong>API Integration Work</strong></p><button>×</button></div>
+              </div>
+            </aside>
+
+            <article class="panel projects-panel" id="projects">
+              <div class="panel-heading"><div><h2>Production overview</h2><p>Track active work across departments</p></div><button class="text-button">All projects <span>→</span></button></div>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>Project</th><th>Department</th><th>Progress</th><th>Status</th><th>Due date</th></tr></thead>
+                  <tbody>
+                    <tr><td><div class="project-name"><span class="project-thumb thumb-purple">CL</span><strong>City Life — S02</strong></div></td><td>Production</td><td><div class="progress-cell"><span>72%</span><div class="progress"><i style="width:72%"></i></div></div></td><td><span class="pill pill-progress">In progress</span></td><td>18 Oct 2026</td></tr>
+                    <tr><td><div class="project-name"><span class="project-thumb thumb-orange">BM</span><strong>Business Morning</strong></div></td><td>Programming</td><td><div class="progress-cell"><span>48%</span><div class="progress"><i style="width:48%"></i></div></div></td><td><span class="pill pill-review">In review</span></td><td>24 Oct 2026</td></tr>
+                    <tr><td><div class="project-name"><span class="project-thumb thumb-blue">IP</span><strong>Inside Pakistan</strong></div></td><td>Editorial</td><td><div class="progress-cell"><span>91%</span><div class="progress"><i style="width:91%"></i></div></div></td><td><span class="pill pill-ready">On track</span></td><td>12 Oct 2026</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </section>
+        </div>
+
+        <div class="page-content view-page" id="programming" hidden>
+          <section class="page-heading">
+            <div>
+              <p class="eyebrow">Programming workspace · Tuesday, 07 October 2026</p>
+              <h1>Broadcast programming</h1>
+              <p class="heading-copy">Plan, coordinate, and monitor everything going on-air across Chinar TV.</p>
+            </div>
+            <div class="heading-actions">
+              <button class="button button-secondary">Export schedule <span>↓</span></button>
+              <button class="button button-primary" id="newProgramme">+ New programme</button>
+            </div>
+          </section>
+
+          <section class="programming-toolbar">
+            <div class="date-controls"><button class="round-control">‹</button><strong>07 October 2026</strong><button class="round-control">›</button><button class="today-button">Today</button></div>
+            <div class="programming-filters"><button class="filter-button active">All channels</button><button class="filter-button">Chinar TV</button><button class="filter-button">Chinar News</button><button class="filter-button">Studio feed</button></div>
+          </section>
+
+          <section class="programming-layout">
+            <article class="panel broadcast-board">
+              <div class="panel-heading"><div><h2>Today’s broadcast plan</h2><p>Wednesday schedule · 10 programmes · 14h 30m airtime</p></div><span class="on-air-indicator"><i></i>Live operations</span></div>
+              <div class="channel-tabs"><button class="active">All</button><button>Chinar TV</button><button>News</button><button>Sports</button></div>
+              <div class="broadcast-list">
+                <div class="broadcast-item live-row"><div class="broadcast-time"><strong>10:00</strong><span>AM</span></div><div class="broadcast-track"><i></i></div><div class="broadcast-copy"><div><strong>Morning Focus</strong><span class="status live-status">On air</span></div><p>Chinar TV · News &amp; current affairs · Studio A</p></div><div class="broadcast-duration">60 min</div><div class="avatar avatar-orange">MK</div><button class="row-menu">•••</button></div>
+                <div class="broadcast-item"><div class="broadcast-time"><strong>11:00</strong><span>AM</span></div><div class="broadcast-track"><i></i></div><div class="broadcast-copy"><div><strong>Market Watch</strong><span class="status upcoming-status">Upcoming</span></div><p>Chinar Business · Live interview · Studio B</p></div><div class="broadcast-duration">30 min</div><div class="avatar avatar-blue">AS</div><button class="row-menu">•••</button></div>
+                <div class="broadcast-item"><div class="broadcast-time"><strong>12:30</strong><span>PM</span></div><div class="broadcast-track"><i></i></div><div class="broadcast-copy"><div><strong>Chinar Bulletin</strong><span class="status upcoming-status">Upcoming</span></div><p>Chinar News · News bulletin · Studio B</p></div><div class="broadcast-duration">30 min</div><div class="avatar avatar-green">FN</div><button class="row-menu">•••</button></div>
+                <div class="broadcast-item"><div class="broadcast-time"><strong>02:00</strong><span>PM</span></div><div class="broadcast-track"><i></i></div><div class="broadcast-copy"><div><strong>Inside Pakistan</strong><span class="status upcoming-status">Upcoming</span></div><p>Chinar TV · Documentary · Field unit 02</p></div><div class="broadcast-duration">45 min</div><div class="avatar avatar-indigo">SA</div><button class="row-menu">•••</button></div>
+                <div class="broadcast-item"><div class="broadcast-time"><strong>04:30</strong><span>PM</span></div><div class="broadcast-track"><i></i></div><div class="broadcast-copy"><div><strong>City Life — Season 02</strong><span class="status prep-status">In preparation</span></div><p>Chinar TV · Entertainment · Studio A</p></div><div class="broadcast-duration">60 min</div><div class="avatar avatar-orange">NK</div><button class="row-menu">•••</button></div>
+              </div>
+            </article>
+
+            <aside class="panel day-panel">
+              <div class="panel-heading"><div><h2>Schedule health</h2><p>Live status across the day</p></div><button class="more-button">•••</button></div>
+              <div class="health-score"><div class="score-ring"><strong>94%</strong><span>On track</span></div><div><p><i class="health-dot green-dot"></i> 8 programmes confirmed</p><p><i class="health-dot yellow-dot"></i> 1 awaiting approval</p><p><i class="health-dot red-dot"></i> 1 production risk</p></div></div>
+              <div class="day-divider"></div>
+              <h3>Production alerts</h3>
+              <div class="alert-item"><span class="alert-icon warning">!</span><div><strong>Studio B handover</strong><p>Engineering check due by 11:45 AM.</p></div></div>
+              <div class="alert-item"><span class="alert-icon info">i</span><div><strong>Talent confirmation</strong><p>Waiting on two guests for Market Watch.</p></div></div>
+              <button class="full-width-button">View all alerts <span>→</span></button>
+            </aside>
+          </section>
+
+          <section class="panel run-sheet-panel">
+            <div class="panel-heading"><div><h2>Run sheet</h2><p>Production handovers and technical requirements</p></div><button class="text-button">Open run sheet <span>→</span></button></div>
+            <div class="table-wrap"><table><thead><tr><th>Programme</th><th>Producer</th><th>Technical setup</th><th>Readiness</th><th>Last updated</th></tr></thead><tbody><tr><td><strong class="table-programme">Morning Focus</strong></td><td>M. Khan</td><td>Studio A · 3 cameras</td><td><span class="pill pill-ready">Ready</span></td><td>08:42 AM</td></tr><tr><td><strong class="table-programme">Market Watch</strong></td><td>A. Shah</td><td>Studio B · Remote guest</td><td><span class="pill pill-review">Review</span></td><td>08:25 AM</td></tr><tr><td><strong class="table-programme">Inside Pakistan</strong></td><td>F. Noor</td><td>Field unit 02 · Playback</td><td><span class="pill pill-progress">In progress</span></td><td>07:58 AM</td></tr></tbody></table></div>
+          </section>
+        </div>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status">Action centre is ready</div>
+    <script src="app.js"></script>
+  </body>
+</html>
