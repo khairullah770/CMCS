@@ -28,6 +28,7 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
+import { CeoDashboard } from "./ceo-dashboard";
 
 type Role =
   | "ceo"
@@ -371,7 +372,7 @@ const ceoPeriods = {
   "Custom Range": { projects: "36", active: "16", upcoming: "8", delayed: "4", completed: "18", revenue: "$768.2k", outstanding: "$96.4k", invoices: "11" },
 } as const;
 
-function CeoDashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
+function LegacyCeoDashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [active, setActive] = useState("Dashboard");
   const [period, setPeriod] = useState<keyof typeof ceoPeriods>("Today");
   const [profileOpen, setProfileOpen] = useState(false);
