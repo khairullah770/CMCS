@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { jsPDF } from "jspdf";
 import {
   Camera,
   Check,
@@ -13,6 +14,9 @@ import {
   FileText,
   FolderOpen,
   ImagePlus,
+  Maximize2,
+  Minus,
+  Plus,
   RotateCw,
   Save,
   ScanLine,
@@ -41,9 +45,22 @@ type Resource = {
 type ScanPage = {
   id: string;
   dataUrl: string;
+  processedDataUrl?: string;
   type: string;
   rotation: number;
+  corners?: Point[];
+  filter: ScanFilter;
+  brightness: number;
+  contrast: number;
 };
+
+type Point = { x: number; y: number };
+type ScanFilter =
+  | "Original"
+  | "Auto Enhance"
+  | "Grayscale"
+  | "Black & White"
+  | "Color Enhancement";
 
 type ScannedDocument = {
   id: string;
@@ -115,6 +132,284 @@ function loadImage(dataUrl: string): Promise<HTMLImageElement> {
     image.onerror = () => reject(new Error("Unable to preview this image."));
     image.src = dataUrl;
   });
+}
+
+declare global {
+  interface Window {
+    cv?: {
+      onRuntimeInitialized?: () => void;
+      Mat: new () => any;
+      imread: (source: CanvasImageSource) => any;
+      imshow: (canvas: HTMLCanvasElement, mat: any) => void;
+      cvtColor: (...args: any[]) => void;
+      gaussianBlur: (...args: any[]) => void;
+      Canny: (...args: any[]) => void;
+      findContours: (...args: any[]) => void;
+      contourArea: (contour: any) => number;
+      approxPolyDP: (...args: any[]) => void;
+      arcLength: (...args: any[]) => number;
+      isContourConvex: (contour: any) => boolean;
+      warpPerspective: (...args: any[]) => void;
+      getPerspectiveTransform: (...args: any[]) => any;
+      matFromArray: (...args: any[]) => any;
+      CV_32FC2: number;
+      getPerspectiveTransformCorners: (...args: any[]) => any;
+      waitKey: (delay: number) => void;
+      COLOR_RGBA2GRAY: number;
+      COLOR_RGBA2RGB: number;
+      THRESH_BINARY: number;
+      RETR_LIST: number;
+      CHAIN_APPROX_SIMPLE: number;
+      INTER_CUBIC: number;
+      INTER_LINEAR: number;
+      BORDER_CONSTANT: number;
+      MatVector: new () => any;
+      Scalar: new (...args: number[]) => any;
+      Size: new (width: number, height: number) => any;
+      Point: new (x: number, y: number) => any;
+      SORT_ASCENDING: number;
+      sortCorners: (corners: Point[]) => Point[];
+      outlineContour: (contour: any) => any;
+    };
+  }
+}
+
+function loadOpenCv() {
+  if (typeof window === "undefined") return Promise.resolve();
+  if (window.cv?.Mat) return Promise.resolve();
+  return new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(
+      'script[data-cmcs-opencv]',
+    );
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener(
+        "error",
+        () => reject(new Error("OpenCV.js could not be loaded.")),
+        { once: true },
+      );
+      return;
+    }
+    const script = document.createElement("script");
+    script.async = true;
+    script.src = "https://docs.opencv.org/4.10.0/opencv.js";
+    script.dataset.cmcsOpencv = "true";
+    script.onload = () => {
+      if (window.cv?.onRuntimeInitialized) {
+        window.cv.onRuntimeInitialized = () => resolve();
+      } else {
+        resolve();
+      }
+    };
+    script.onerror = () => reject(new Error("OpenCV.js could not be loaded."));
+    document.head.appendChild(script);
+  });
+}
+
+function sortCorners(points: Point[]) {
+  const center = points.reduce(
+    (result, point) => ({ x: result.x + point.x / points.length, y: result.y + point.y / points.length }),
+    { x: 0, y: 0 },
+  );
+  return [
+    points.reduce((a, b) => (a.x + a.y < b.x + b.y ? a : b)),
+    points.reduce((a, b) => (b.x - b.y < a.x - a.y ? b : a)),
+    points.reduce((a, b) => (a.x + a.y > b.x + b.y ? a : b)),
+    points.reduce((a, b) => (b.x - b.y > a.x - a.y ? b : a)),
+  ].map((point) => ({
+    x: Math.round(point.x),
+    y: Math.round(point.y),
+  }));
+}
+
+async function detectDocumentCorners(dataUrl: string): Promise<Point[] | null> {
+  if (!window.cv?.Mat) return null;
+  let source: any = null;
+  let gray: any = null;
+  let blurred: any = null;
+  let edges: any = null;
+  let contours: any = null;
+  let hierarchy: any = null;
+  try {
+    const image = await loadImage(dataUrl);
+    const canvas = document.createElement("canvas");
+    const scale = Math.min(1, 1400 / Math.max(image.width, image.height));
+    canvas.width = Math.round(image.width * scale);
+    canvas.height = Math.round(image.height * scale);
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    source = window.cv.imread(canvas);
+    gray = new window.cv.Mat();
+    blurred = new window.cv.Mat();
+    edges = new window.cv.Mat();
+    contours = new window.cv.MatVector();
+    hierarchy = new window.cv.Mat();
+    window.cv.cvtColor(source, gray, window.cv.COLOR_RGBA2GRAY);
+    window.cv.gaussianBlur(gray, blurred, new window.cv.Size(5, 5), 0);
+    window.cv.Canny(blurred, edges, 60, 180);
+    window.cv.findContours(
+      edges,
+      contours,
+      hierarchy,
+      window.cv.RETR_LIST,
+      window.cv.CHAIN_APPROX_SIMPLE,
+    );
+
+    let best: Point[] | null = null;
+    let bestArea = 0;
+    for (let index = 0; index < contours.size(); index += 1) {
+      const contour = contours.get(index);
+      const area = window.cv.contourArea(contour);
+      if (area < canvas.width * canvas.height * 0.08) {
+        contour.delete();
+        continue;
+      }
+      const perimeter = window.cv.arcLength(contour, true);
+      const polygon = new window.cv.Mat();
+      window.cv.approxPolyDP(contour, polygon, 0.02 * perimeter, true);
+      if (polygon.rows === 4 && window.cv.isContourConvex(polygon)) {
+        const points: Point[] = [];
+        for (let pointIndex = 0; pointIndex < 4; pointIndex += 1) {
+          const point = polygon.intPtr(pointIndex, 0);
+          points.push({
+            x: Math.round((point[0] / canvas.width) * 1000),
+            y: Math.round((point[1] / canvas.height) * 1000),
+          });
+        }
+        if (area > bestArea) {
+          bestArea = area;
+          best = sortCorners(points);
+        }
+      }
+      polygon.delete();
+      contour.delete();
+    }
+    return best;
+  } catch {
+    return null;
+  } finally {
+    source?.delete();
+    gray?.delete();
+    blurred?.delete();
+    edges?.delete();
+    contours?.delete();
+    hierarchy?.delete();
+  }
+}
+
+async function correctedPageDataUrl(page: ScanPage): Promise<string> {
+  const image = await loadImage(page.dataUrl);
+  const canvas = document.createElement("canvas");
+  let outputWidth = image.width;
+  let outputHeight = image.height;
+
+  if (page.corners?.length === 4) {
+    const cv = window.cv;
+    if (cv?.Mat) {
+      let source: any = null;
+      let destination: any = null;
+      let matrix: any = null;
+      try {
+        const sourceCanvas = document.createElement("canvas");
+        sourceCanvas.width = image.width;
+        sourceCanvas.height = image.height;
+        sourceCanvas.getContext("2d")?.drawImage(image, 0, 0);
+        source = cv.imread(sourceCanvas);
+        destination = new cv.Mat();
+        const corners = page.corners;
+        const pixels = corners.map((point) => ({
+          x: (point.x / 1000) * image.width,
+          y: (point.y / 1000) * image.height,
+        }));
+        const topWidth = Math.hypot(pixels[1].x - pixels[0].x, pixels[1].y - pixels[0].y);
+        const bottomWidth = Math.hypot(pixels[2].x - pixels[3].x, pixels[2].y - pixels[3].y);
+        const leftHeight = Math.hypot(pixels[3].x - pixels[0].x, pixels[3].y - pixels[0].y);
+        const rightHeight = Math.hypot(pixels[2].x - pixels[1].x, pixels[2].y - pixels[1].y);
+        outputWidth = Math.round(Math.max(topWidth, bottomWidth));
+        outputHeight = Math.round(Math.max(leftHeight, rightHeight));
+        outputWidth = Math.max(80, Math.min(outputWidth, 2400));
+        outputHeight = Math.max(80, Math.min(outputHeight, 2400));
+        const sourcePoints = cv.matFromArray(
+          4,
+          1,
+          cv.CV_32FC2,
+          pixels.flatMap((point) => [point.x, point.y]),
+        );
+        const destinationPoints = cv.matFromArray(
+          4,
+          1,
+          cv.CV_32FC2,
+          [0, 0, outputWidth - 1, 0, outputWidth - 1, outputHeight - 1, 0, outputHeight - 1],
+        );
+        matrix = cv.getPerspectiveTransform(sourcePoints, destinationPoints);
+        cv.warpPerspective(
+          source,
+          destination,
+          matrix,
+          new cv.Size(outputWidth, outputHeight),
+        );
+        canvas.width = outputWidth;
+        canvas.height = outputHeight;
+        cv.imshow(canvas, destination);
+        sourcePoints.delete();
+        destinationPoints.delete();
+        return await finishEnhancement(canvas, page);
+      } finally {
+        source?.delete();
+        destination?.delete();
+        matrix?.delete();
+      }
+    }
+  }
+
+  const quarterTurns = ((page.rotation / 90) % 4 + 4) % 4;
+  const rotated = quarterTurns % 2 === 1;
+  canvas.width = rotated ? image.height : image.width;
+  canvas.height = rotated ? image.width : image.height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Image processing is unavailable.");
+  context.translate(canvas.width / 2, canvas.height / 2);
+  context.rotate((quarterTurns * Math.PI) / 2);
+  context.drawImage(image, -image.width / 2, -image.height / 2);
+  return finishEnhancement(canvas, page);
+}
+
+async function finishEnhancement(canvas: HTMLCanvasElement, page: ScanPage) {
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return canvas.toDataURL("image/jpeg", 0.92);
+  if (page.filter !== "Original" || page.brightness !== 0 || page.contrast !== 100) {
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+    const data = pixels.data;
+    const contrast = (259 * (page.contrast + 255)) / (255 * (259 - page.contrast));
+    for (let index = 0; index < data.length; index += 4) {
+      let red = data[index];
+      let green = data[index + 1];
+      let blue = data[index + 2];
+      if (page.filter === "Grayscale" || page.filter === "Black & White") {
+        const gray = red * 0.299 + green * 0.587 + blue * 0.114;
+        if (page.filter === "Black & White") {
+          const value = gray > 150 ? 255 : 0;
+          red = green = blue = value;
+        } else {
+          red = green = blue = gray;
+        }
+      }
+      if (page.filter === "Color Enhancement" || page.filter === "Auto Enhance") {
+        const average = (red + green + blue) / 3;
+        red = average + (red - average) * 1.12;
+        green = average + (green - average) * 1.12;
+        blue = average + (blue - average) * 1.12;
+      }
+      const adjustedContrast = contrast * (red - 128) + 128 + page.brightness;
+      data[index] = Math.max(0, Math.min(255, adjustedContrast));
+      data[index + 1] = Math.max(0, Math.min(255, contrast * (green - 128) + 128 + page.brightness));
+      data[index + 2] = Math.max(0, Math.min(255, contrast * (blue - 128) + 128 + page.brightness));
+    }
+    context.putImageData(pixels, 0, 0);
+  }
+  return canvas.toDataURL("image/jpeg", 0.92);
 }
 
 async function pageAsJpeg(page: ScanPage) {
@@ -304,8 +599,14 @@ export function RateCardTemplatesPage({
   );
   const [scannerError, setScannerError] = useState("");
   const [scannerSaving, setScannerSaving] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [adjustingPageId, setAdjustingPageId] = useState<string | null>(null);
+  const [selectedFilter, setSelectedFilter] = useState<ScanFilter>("Auto Enhance");
+  const [processingPageId, setProcessingPageId] = useState<string | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const defaultRates = useMemo(initialRates, []);
 
   const resourceByKey = useMemo(() => {
@@ -344,13 +645,89 @@ export function RateCardTemplatesPage({
   }
 
   function closeScanner() {
+    stopCamera();
     setScannerTemplate(null);
     setScannerName("");
     setScannerPages([]);
     setScannerReplacingId(null);
     setScannerError("");
     setScannerSaving(false);
+    setCameraOpen(false);
+    setAdjustingPageId(null);
   }
+
+  function stopCamera() {
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+  }
+
+  async function openLiveCamera() {
+    setScannerError("");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setScannerError("Live camera preview is not supported in this browser.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      });
+      cameraStreamRef.current = stream;
+      setCameraOpen(true);
+      window.setTimeout(() => {
+        if (cameraVideoRef.current) {
+          cameraVideoRef.current.srcObject = stream;
+          void cameraVideoRef.current.play();
+        }
+      }, 50);
+    } catch (error) {
+      setScannerError(
+        error instanceof DOMException
+          ? "Camera permission was denied or no camera is available."
+          : "The camera could not be opened.",
+      );
+    }
+  }
+
+  function captureCameraPage() {
+    const video = cameraVideoRef.current;
+    if (!video || video.readyState < 2) {
+      setScannerError("The camera is still starting. Please wait and try again.");
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    const maxWidth = 1600;
+    const scale = Math.min(1, maxWidth / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    const context = canvas.getContext("2d");
+    if (!context) {
+      setScannerError("The camera image could not be prepared.");
+      return;
+    }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+    const page: ScanPage = {
+      id: `capture-${Date.now()}-${Math.random()}`,
+      dataUrl,
+      type: "image/jpeg",
+      rotation: 0,
+      filter: "Auto Enhance",
+      brightness: 0,
+      contrast: 100,
+    };
+    setScannerPages((current) => [...current, page]);
+    setProcessingPageId(page.id);
+    void processCapturedPage(page);
+  }
+
+  useEffect(() => {
+    return () => stopCamera();
+  }, []);
 
   function openScanner(template: RateCardTemplate, existing?: ScannedDocument) {
     setScannerTemplate(template);
@@ -381,9 +758,15 @@ export function RateCardTemplatesPage({
           dataUrl: await readFileAsDataUrl(file),
           type: file.type,
           rotation: 0,
+          filter: "Auto Enhance" as ScanFilter,
+          brightness: 0,
+          contrast: 100,
         })),
       );
       setScannerPages((current) => [...current, ...pages]);
+      pages.forEach((page) => {
+        if (page.type !== "application/pdf") void processCapturedPage(page);
+      });
     } catch (error) {
       setScannerError(
         error instanceof Error ? error.message : "The document could not be added.",
@@ -405,6 +788,105 @@ export function RateCardTemplatesPage({
     );
   }
 
+  async function downloadScannerPage(page: ScanPage) {
+    try {
+      const dataUrl = await correctedPageDataUrl(page);
+      const link = window.document.createElement("a");
+      link.href = dataUrl;
+      link.download = `${scannerName.trim().replace(/[^\w-]+/g, "-") || "scanned-page"}-page-${scannerPages.indexOf(page) + 1}.jpg`;
+      link.click();
+    } catch {
+      setScannerError("The individual image could not be downloaded.");
+    }
+  }
+
+  async function processCapturedPage(page: ScanPage) {
+    setProcessingPageId(page.id);
+    try {
+      await loadOpenCv();
+      const corners = await detectDocumentCorners(page.dataUrl);
+      setScannerPages((current) =>
+        current.map((item) =>
+          item.id === page.id
+            ? { ...item, corners: corners ?? item.corners }
+            : item,
+        ),
+      );
+      const updated = { ...page, corners: corners ?? page.corners };
+      const processed = await correctedPageDataUrl(updated);
+      setScannerPages((current) =>
+        current.map((item) =>
+          item.id === page.id ? { ...item, processedDataUrl: processed } : item,
+        ),
+      );
+    } catch (error) {
+      setScannerError(
+        error instanceof Error ? error.message : "This page could not be processed.",
+      );
+    } finally {
+      setProcessingPageId(null);
+    }
+  }
+
+  async function updateProcessedPage(
+    pageId: string,
+    updates: Partial<ScanPage>,
+  ) {
+    setProcessingPageId(pageId);
+    const current = scannerPages.find((page) => page.id === pageId);
+    if (!current) return;
+    try {
+      const updated = { ...current, ...updates };
+      const processed = await correctedPageDataUrl(updated);
+      setScannerPages((items) =>
+        items.map((item) =>
+          item.id === pageId
+            ? { ...updated, processedDataUrl: processed }
+            : item,
+        ),
+      );
+    } catch {
+      setScannerError("The page preview could not be updated.");
+    } finally {
+      setProcessingPageId(null);
+    }
+  }
+
+  function retakeCameraPage(pageId: string) {
+    removeScannerPage(pageId);
+    setCameraOpen(true);
+    void openLiveCamera();
+  }
+
+  function updateCorner(
+    pageId: string,
+    cornerIndex: number,
+    event: React.PointerEvent<SVGCircleElement>,
+  ) {
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1000, ((event.clientX - rect.left) / rect.width) * 1000));
+    const y = Math.max(0, Math.min(1000, ((event.clientY - rect.top) / rect.height) * 1000));
+    setScannerPages((current) =>
+      current.map((page) => {
+        if (page.id !== pageId) return page;
+        const corners = [...(page.corners ?? defaultScannerCorners())];
+        corners[cornerIndex] = { x: Math.round(x), y: Math.round(y) };
+        return { ...page, corners };
+      }),
+    );
+  }
+
+  function defaultScannerCorners(): Point[] {
+    return [
+      { x: 80, y: 80 },
+      { x: 920, y: 80 },
+      { x: 920, y: 920 },
+      { x: 80, y: 920 },
+    ];
+  }
+
   async function saveScannedDocument() {
     const trimmedName = scannerName.trim();
     if (!scannerTemplate || !trimmedName || !scannerPages.length) {
@@ -414,13 +896,57 @@ export function RateCardTemplatesPage({
     setScannerSaving(true);
     setScannerError("");
     try {
-      const pdfBlob = await buildImagePdf(scannerPages);
-      const reader = new FileReader();
-      const pdfDataUrl = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(new Error("The document could not be saved."));
-        reader.readAsDataURL(pdfBlob);
-      });
+      if (scannerPages.some((page) => page.type === "application/pdf")) {
+        if (scannerPages.length !== 1) {
+          throw new Error("PDF uploads cannot be combined with additional pages.");
+        }
+        const pdfDataUrl = scannerPages[0].dataUrl;
+        const existing = scannedDocuments.find(
+          (document) => document.id === scannerReplacingId,
+        );
+        const savedDocument: ScannedDocument = {
+          id: existing?.id ?? `DOC-${Date.now()}`,
+          templateId: scannerTemplate.id,
+          name: trimmedName,
+          createdAt: existing?.createdAt ?? new Date().toISOString().slice(0, 10),
+          pages: scannerPages,
+          pdfDataUrl,
+        };
+        setScannedDocuments((current) =>
+          existing
+            ? current.map((document) =>
+                document.id === existing.id ? savedDocument : document,
+              )
+            : [...current, savedDocument],
+        );
+        onNotify(existing ? "Scanned document replaced." : "Scanned document archived.");
+        closeScanner();
+        return;
+      }
+
+      const pdf = new jsPDF({ unit: "mm", format: "a4", compress: true });
+      for (let index = 0; index < scannerPages.length; index += 1) {
+        if (index > 0) pdf.addPage("a4");
+        const page = scannerPages[index];
+        const processed = await correctedPageDataUrl(page);
+        const image = await loadImage(processed);
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const scale = Math.min(pageWidth / image.width, pageHeight / image.height);
+        const width = image.width * scale;
+        const height = image.height * scale;
+        pdf.addImage(
+          processed,
+          "JPEG",
+          (pageWidth - width) / 2,
+          (pageHeight - height) / 2,
+          width,
+          height,
+          undefined,
+          "FAST",
+        );
+      }
+      const pdfDataUrl = pdf.output("dataurlstring");
       const existing = scannedDocuments.find(
         (document) => document.id === scannerReplacingId,
       );
@@ -855,6 +1381,33 @@ export function RateCardTemplatesPage({
         />
         <div className="rate-document-scanner">
           <div className="rate-document-scanner-main">
+            {cameraOpen && (
+              <section className="rate-document-camera panel">
+                <video ref={cameraVideoRef} playsInline muted />
+                <div className="rate-document-camera-guide" aria-hidden="true" />
+                <div className="rate-document-camera-controls">
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    onClick={() => {
+                      stopCamera();
+                      setCameraOpen(false);
+                    }}
+                  >
+                    <X size={15} /> Close
+                  </button>
+                  <button
+                    type="button"
+                    className="rate-document-capture"
+                    aria-label="Capture document"
+                    onClick={captureCameraPage}
+                  >
+                    <span />
+                  </button>
+                  <span />
+                </div>
+              </section>
+            )}
             <section className="panel rate-document-scanner-toolbar">
               <div>
                 <span className="eyebrow">DOCUMENT PAGES</span>
@@ -865,7 +1418,7 @@ export function RateCardTemplatesPage({
                 <button
                   type="button"
                   className="button button-primary"
-                  onClick={() => cameraInputRef.current?.click()}
+                  onClick={() => void openLiveCamera()}
                 >
                   <Camera size={15} /> Take photo
                 </button>
@@ -913,25 +1466,101 @@ export function RateCardTemplatesPage({
                       {page.type === "application/pdf" ? (
                         <iframe title={`Document page ${index + 1}`} src={page.dataUrl} />
                       ) : (
-                        <img
-                          src={page.dataUrl}
-                          alt={`Scanned document page ${index + 1}`}
-                          style={{ transform: `rotate(${page.rotation}deg)` }}
-                        />
+                        <div className="rate-document-page-image">
+                          <img
+                            src={page.processedDataUrl ?? page.dataUrl}
+                            alt={`Scanned document page ${index + 1}`}
+                          />
+                          {adjustingPageId === page.id && (
+                            <svg
+                              className="rate-document-corner-overlay"
+                              viewBox="0 0 1000 1000"
+                              preserveAspectRatio="none"
+                              onPointerMove={(event) => {
+                                if ((event.buttons & 1) === 0) return;
+                                const svg = event.currentTarget;
+                                const rect = svg.getBoundingClientRect();
+                                const active = svg.querySelector<SVGCircleElement>("[data-active='true']");
+                                if (!active) return;
+                                const index = Number(active.dataset.corner);
+                                updateCorner(page.id, index, event as unknown as React.PointerEvent<SVGCircleElement>);
+                              }}
+                              onPointerUp={() => void updateProcessedPage(page.id, {})}
+                            >
+                              <polygon
+                                points={(page.corners ?? defaultScannerCorners())
+                                  .map((point) => `${point.x},${point.y}`)
+                                  .join(" ")}
+                              />
+                              {(page.corners ?? defaultScannerCorners()).map((point, cornerIndex) => (
+                                <circle
+                                  key={cornerIndex}
+                                  cx={point.x}
+                                  cy={point.y}
+                                  r="18"
+                                  data-corner={cornerIndex}
+                                  data-active="false"
+                                  onPointerDown={(event) => {
+                                    event.currentTarget.dataset.active = "true";
+                                    event.currentTarget.setPointerCapture(event.pointerId);
+                                  }}
+                                  onPointerMove={(event) => {
+                                    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                                    updateCorner(page.id, cornerIndex, event);
+                                  }}
+                                  onPointerUp={(event) => {
+                                    event.currentTarget.dataset.active = "false";
+                                    event.currentTarget.releasePointerCapture(event.pointerId);
+                                    void updateProcessedPage(page.id, {});
+                                  }}
+                                />
+                              ))}
+                            </svg>
+                          )}
+                        </div>
                       )}
                       <span>Page {index + 1}</span>
                     </div>
                     <div className="rate-document-page-actions">
                       {page.type !== "application/pdf" && (
-                        <button
-                          type="button"
-                          className="icon-button"
-                          title="Rotate page"
-                          aria-label={`Rotate page ${index + 1}`}
-                          onClick={() => rotateScannerPage(page.id)}
-                        >
-                          <RotateCw size={15} />
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            title="Adjust corners"
+                            aria-label={`Adjust corners on page ${index + 1}`}
+                            onClick={() => setAdjustingPageId(adjustingPageId === page.id ? null : page.id)}
+                          >
+                            <Maximize2 size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            title="Rotate page"
+                            aria-label={`Rotate page ${index + 1}`}
+                            onClick={() => void updateProcessedPage(page.id, { rotation: (page.rotation + 90) % 360 })}
+                          >
+                            <RotateCw size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            title="Retake page"
+                            aria-label={`Retake page ${index + 1}`}
+                            onClick={() => retakeCameraPage(page.id)}
+                          >
+                            <Camera size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            title="Download image"
+                            aria-label={`Download page ${index + 1} image`}
+                            onClick={() => void downloadScannerPage(page)}
+                          >
+                            <Download size={15} />
+                          </button>
+                        </>
                       )}
                       <button
                         type="button"
@@ -975,6 +1604,70 @@ export function RateCardTemplatesPage({
                 autoFocus
               />
             </label>
+            {scannerPages.length > 0 && scannerPages.some((page) => page.type !== "application/pdf") && (
+              <div className="rate-document-enhancements">
+                <span className="eyebrow">IMAGE ENHANCEMENT</span>
+                <div className="rate-document-filter-list">
+                  {(["Original", "Auto Enhance", "Grayscale", "Black & White", "Color Enhancement"] as ScanFilter[]).map((filter) => (
+                    <button
+                      type="button"
+                      key={filter}
+                      className={selectedFilter === filter ? "selected" : ""}
+                      onClick={async () => {
+                        setSelectedFilter(filter);
+                        for (const page of scannerPages.filter((item) => item.type !== "application/pdf")) {
+                          await updateProcessedPage(page.id, { filter });
+                        }
+                      }}
+                    >
+                      {filter}
+                    </button>
+                  ))}
+                </div>
+                <label className="rate-document-range">
+                  <span><b>Brightness</b><small>{scannerPages.find((page) => page.type !== "application/pdf")?.brightness ?? 0}</small></span>
+                  <input
+                    type="range"
+                    min="-100"
+                    max="100"
+                    value={scannerPages.find((page) => page.type !== "application/pdf")?.brightness ?? 0}
+                    onChange={(event) => {
+                      const brightness = Number(event.target.value);
+                      setScannerPages((current) =>
+                        current.map((page) =>
+                          page.type !== "application/pdf" ? { ...page, brightness } : page,
+                        ),
+                      );
+                    }}
+                    onPointerUp={() => {
+                      const page = scannerPages.find((item) => item.type !== "application/pdf");
+                      if (page) void updateProcessedPage(page.id, { brightness: page.brightness });
+                    }}
+                  />
+                </label>
+                <label className="rate-document-range">
+                  <span><b>Contrast</b><small>{scannerPages.find((page) => page.type !== "application/pdf")?.contrast ?? 100}%</small></span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="200"
+                    value={scannerPages.find((page) => page.type !== "application/pdf")?.contrast ?? 100}
+                    onChange={(event) => {
+                      const contrast = Number(event.target.value);
+                      setScannerPages((current) =>
+                        current.map((page) =>
+                          page.type !== "application/pdf" ? { ...page, contrast } : page,
+                        ),
+                      );
+                    }}
+                    onPointerUp={() => {
+                      const page = scannerPages.find((item) => item.type !== "application/pdf");
+                      if (page) void updateProcessedPage(page.id, { contrast: page.contrast });
+                    }}
+                  />
+                </label>
+              </div>
+            )}
             <div className="rate-document-format-note">
               <Check size={15} />
               Images will be combined into one PDF when saved.
