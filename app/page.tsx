@@ -1,12 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dashboard, Login } from "../components/ctms";
 import { AuthProvider, useAuth } from "../lib/context/AuthContext";
 
 function AppContent() {
   const { user, logout, isLoading } = useAuth();
   const [loggedIn, setLoggedIn] = useState(false);
+
+  useEffect(() => {
+    setLoggedIn(Boolean(user));
+  }, [user]);
 
   // Show loading state while checking authentication
   if (isLoading) {

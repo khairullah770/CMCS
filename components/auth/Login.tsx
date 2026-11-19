@@ -104,13 +104,13 @@ export function Login({ onLogin }: { onLogin: () => void }) {
             </button>
           </form>
           <div className="auth-demo-hint">
-            <p><strong>Test Credentials (Password: ChinarCEO@2026)</strong></p>
-            <small>CEO: ceo@chinar.tv</small>
-            <small>Operations: hoo@chinar.tv</small>
-            <small>Finance: finance@chinar.tv</small>
-            <small>Technical: technical@chinar.tv</small>
-            <small>Production: production@chinar.tv</small>
-            <small>Admin: admin@chinar.tv</small>
+            <p><strong>Demo credentials</strong></p>
+            <small>CEO: ceo@demo.chinar.tv / ChinarCEO@2026</small>
+            <small>Operations: hoo@demo.chinar.tv / ChinarOps@2026</small>
+            <small>Finance: finance@demo.chinar.tv / ChinarFinance@2026</small>
+            <small>Technical: technical@demo.chinar.tv / ChinarTech@2026</small>
+            <small>Production: production@demo.chinar.tv / ChinarProd@2026</small>
+            <small>Admin: admin@demo.chinar.tv / ChinarAdmin@2026</small>
           </div>
           <p className="auth-authorized">
             <ShieldCheck size={13} /> Authorized CMCS personnel only

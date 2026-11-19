@@ -33,6 +33,12 @@ export function CeoApproval({
       <div className="dialog-actions">
         <button
           className="button button-secondary"
+          onClick={() => onSubmit(project, "Changes Requested", comment)}
+        >
+          Request changes
+        </button>
+        <button
+          className="button button-secondary"
           onClick={() => onSubmit(project, "Rejected", comment)}
         >
           Reject

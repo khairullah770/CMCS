@@ -68,9 +68,12 @@ All test accounts use the same password: **`ChinarCEO@2026`**
 **Department**: Finance  
 **Color**: Green (#16a34a)
 
-### Permissions (9)
+### Permissions (10)
 **Projects**
 - ✅ view_projects - View projects
+
+**Clients**
+- ✅ view_clients - View client information
 
 **Finance**
 - ✅ view_finance - View financial data
@@ -224,7 +227,7 @@ All test accounts use the same password: **`ChinarCEO@2026`**
 
 ---
 
-## All System Permissions (35 total)
+## All System Permissions (37 total)
 
 ### General (2)
 - view_all - View all system data
@@ -247,6 +250,10 @@ All test accounts use the same password: **`ChinarCEO@2026`**
 - approve_expenses - Approve expenses
 - manage_payments - Manage payments
 - manage_salaries - Manage salary payments
+
+### Clients (2)
+- view_clients - View client information
+- manage_clients - Create and edit client records
 
 ### Tasks (4)
 - view_all_tasks - View all tasks

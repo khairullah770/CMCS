@@ -30,21 +30,28 @@ import {
   Package,
   Settings2,
   X,
+  Contact,
+  CircleDollarSign,
+  CalendarCheck2,
 } from "lucide-react";
 import {
   Approval,
+  Client,
   Invoice,
   Notification,
   Project,
   Quotation,
+  RateCardTemplate,
   Role,
   User,
 } from "../lib/types";
 import {
   defaultNotifications,
   notificationStorageKey,
+  clientsSeed,
   projectsSeed,
   quotationSeed,
+  invoiceSeed,
   readNotifications,
   users,
 } from "../lib/dummy-data/mock-data";
@@ -69,13 +76,18 @@ import { TechnicalEmployeePage } from "./technical/TechnicalEmployeePage";
 import { AdministrationEmployeePage } from "./employees/AdministrationEmployeePage";
 import { OperationsTasksPage } from "./operations/OperationsTasksPage";
 import { FinanceDashboard } from "./finance/FinanceDashboard";
-import { ProductionPage } from "./production/ProductionPage";
+import { ProductionPage, ProjectCreationView } from "./production/ProductionPage";
+import { RateCardPage } from "./production/RateCardPage";
 import { AdministrationPage } from "./administration/AdministrationPage";
+import { ClientManagementPage } from "./clients/ClientManagementPage";
+import { EquipmentManagementPage } from "./equipment/EquipmentManagementPage";
+import { StaffManagementPage } from "./staff/StaffManagementPage";
+import { RemindersPage } from "./reminders/RemindersPage";
 
 const nav = [
   { label: "Dashboard", icon: LayoutDashboard },
-  { label: "Projects", icon: ClipboardList },
-  { label: "Project Calendar", icon: GanttChartSquare },
+  { label: "Production", icon: ClipboardList },
+  { label: "Clients", icon: Contact },
   { label: "Assignments", icon: Users },
   { label: "Employees", icon: CalendarDays },
   { label: "Finance", icon: Wallet },
@@ -92,8 +104,8 @@ const operationsNav = nav
 
 const ceoNav = [
   { label: "Dashboard", icon: LayoutDashboard },
-  { label: "Projects", icon: ClipboardList },
-  { label: "Project Calendar", icon: GanttChartSquare },
+  { label: "Production", icon: ClipboardList },
+  { label: "Clients", icon: Contact },
   { label: "Project Approvals", icon: CheckCircle2 },
   { label: "Notifications", icon: Bell },
   { label: "Employees", icon: CalendarDays },
@@ -104,6 +116,7 @@ const ceoNav = [
 const technicalNav = [
   { label: "Dashboard", icon: LayoutDashboard },
   { label: "My Projects", icon: ClipboardList },
+  { label: "Clients", icon: Contact },
   { label: "My Tasks", icon: ListTodo },
   { label: "My Schedule", icon: CalendarClock },
   { label: "Equipment & Resources", icon: HardDrive },
@@ -115,20 +128,19 @@ const technicalNav = [
 
 const financeNav = [
   { label: "Dashboard", icon: LayoutDashboard },
-  { label: "Quotations", icon: FileText },
-  { label: "Invoices", icon: ReceiptText },
+  { label: "Clients", icon: Contact },
   { label: "Payments", icon: Wallet },
   { label: "Expenses", icon: ClipboardCheck },
   { label: "Salaries", icon: DollarSign },
   { label: "Equipment Rental", icon: Package },
-  { label: "Projects", icon: ClipboardList },
-  { label: "Project Calendar", icon: GanttChartSquare },
+  { label: "Production", icon: ClipboardList },
   { label: "Documents", icon: FileText },
   { label: "Reports", icon: BarChart3 },
 ];
 
 const administratorNav = [
   { label: "Dashboard",              icon: LayoutDashboard },
+  { label: "Clients",                icon: Contact },
   { label: "User Management",        icon: Users },
   { label: "Roles & Permissions",    icon: ShieldCheck },
   { label: "Department Management",  icon: ClipboardList },
@@ -139,8 +151,11 @@ const administratorNav = [
   { label: "Backup & System Health", icon: HardDrive },
 ];
 
+const RATE_CARD_TEMPLATES_KEY = "cmcs-rate-card-templates";
+
 const administrationEmployeeNav = [
   { label: "Dashboard", icon: LayoutDashboard },
+  { label: "Clients", icon: Contact },
   { label: "Administrative Tasks", icon: ClipboardList },
   { label: "Employees", icon: Users },
   { label: "Documents & Records", icon: FileText },
@@ -155,9 +170,19 @@ const administrationEmployeeNav = [
 const productionNav = [
   { label: "Dashboard", icon: LayoutDashboard },
   { label: "My Tasks", icon: ListTodo },
-  { label: "Projects", icon: ClipboardList },
+  { label: "Production", icon: ClipboardList },
+  { label: "Quotations", icon: FileText },
+  { label: "Clients", icon: Contact },
   { label: "Attendance", icon: UserCheck },
 ];
+
+const resourceTabs = ["Client", "Staff", "Equipment"] as const;
+type ResourceTab = (typeof resourceTabs)[number];
+const resourceMeta: Record<ResourceTab, { icon: typeof Contact; description: string; count: string }> = {
+  Client: { icon: Contact, description: "Manage client relationships and project contacts.", count: "CRM" },
+  Staff: { icon: Users, description: "Coordinate staff records and resource availability.", count: "People" },
+  Equipment: { icon: Package, description: "Track production assets, value and availability.", count: "14 assets" },
+};
 
 export function Dashboard({
   user,
@@ -179,13 +204,29 @@ export function Dashboard({
   const isAdministrator = role === "admin";
   const isAdministrationEmployee = role === "administrationEmployee";
   const [active, setActive] = useState("Dashboard");
+  const [productionView, setProductionView] = useState<
+    | "Projects"
+    | "Project Calendar"
+    | "Rate Card"
+    | "Quotations"
+    | "Invoices"
+  >("Projects");
+  const [showProjectWorkspace, setShowProjectWorkspace] = useState(false);
+  const [resourceTab, setResourceTab] = useState<ResourceTab>("Equipment");
   const [projects, setProjects] = useState<Project[]>(projectsSeed);
+  const [clients, setClients] = useState<Client[]>(clientsSeed);
   const [customFilter, setCustomFilter] = useState("All");
   const [search, setSearch] = useState("");
-  const [dialog, setDialog] = useState<"new" | Project | null>(null);
+  const [dialog, setDialog] = useState<"new" | null>(null);
   const [selected, setSelected] = useState<Project | null>(null);
   const [financeProjectId, setFinanceProjectId] = useState<string | null>(null);
-  const [financeInitialView, setFinanceInitialView] = useState<"invoices" | "quotations" | "expenses" | "payments">("invoices");
+  const [invoiceProjectId, setInvoiceProjectId] = useState<string | null>(null);
+  const [createdQuotations, setCreatedQuotations] = useState<Quotation[]>([]);
+  const [rateCardTemplates, setRateCardTemplates] = useState<RateCardTemplate[]>([]);
+  const [workspaceEdit, setWorkspaceEdit] = useState<{
+    project: Project;
+    quotation?: Quotation;
+  } | null>(null);
   const [approvals, setApprovals] = useState<
     Record<string, { status: Approval; comment: string }>
   >({});
@@ -199,6 +240,37 @@ export function Dashboard({
 
   useEffect(() => {
     setNotifications([...defaultNotifications, ...readNotifications()]);
+    const storedRateCardTemplates = window.localStorage.getItem(RATE_CARD_TEMPLATES_KEY);
+    if (storedRateCardTemplates) {
+      try {
+        const parsed = JSON.parse(storedRateCardTemplates) as Partial<RateCardTemplate>[];
+        const today = new Date().toISOString().slice(0, 10);
+        setRateCardTemplates(
+          parsed.map((template, index) => ({
+            id: template.id ?? `RAT-${Date.now()}-${index}`,
+            name: template.name ?? "Untitled template",
+            functions: template.functions ?? [],
+            resourceKeys: template.resourceKeys ?? Object.keys(template.rates ?? {}),
+            rates: template.rates ?? {},
+            createdAt: template.createdAt ?? today,
+            updatedAt: template.updatedAt ?? template.createdAt ?? today,
+            validity: template.validity ?? "30 days",
+          })),
+        );
+      } catch (error) {
+        console.error("Failed to restore saved rate card templates:", error);
+        window.localStorage.removeItem(RATE_CARD_TEMPLATES_KEY);
+      }
+    }
+    const storedClients = window.localStorage.getItem("cmcs-clients");
+    if (storedClients) {
+      try {
+        setClients(JSON.parse(storedClients) as Client[]);
+      } catch (error) {
+        console.error("Failed to restore saved clients:", error);
+        window.localStorage.removeItem("cmcs-clients");
+      }
+    }
   }, []);
 
   const filtered = useMemo(
@@ -206,9 +278,9 @@ export function Dashboard({
       projects.filter(
         (p) =>
           (customFilter === "All" ||
-            p.status === customFilter ||
-            p.department === customFilter) &&
-          `${p.name} ${p.client} ${p.owner}`
+            (p.approvalStatus ??
+              (p.status === "Rejected" ? "Rejected" : "Approved")) === customFilter) &&
+          `${p.id} ${p.name} ${p.client} ${p.owner}`
             .toLowerCase()
             .includes(search.toLowerCase()),
       ),
@@ -218,6 +290,114 @@ export function Dashboard({
   function notify(text: string) {
     setToast(text);
     window.setTimeout(() => setToast(""), 2600);
+  }
+
+  function persistClients(nextClients: Client[]) {
+    setClients(nextClients);
+    window.localStorage.setItem("cmcs-clients", JSON.stringify(nextClients));
+  }
+
+  function saveRateCardTemplate(template: RateCardTemplate) {
+    const nextTemplates = [...rateCardTemplates, template];
+    setRateCardTemplates(nextTemplates);
+    window.localStorage.setItem(
+      RATE_CARD_TEMPLATES_KEY,
+      JSON.stringify(nextTemplates),
+    );
+    notify(`Rate card template "${template.name}" saved`);
+  }
+
+  function updateRateCardTemplate(template: RateCardTemplate) {
+    const nextTemplates = rateCardTemplates.map((current) =>
+      current.id === template.id ? template : current,
+    );
+    setRateCardTemplates(nextTemplates);
+    window.localStorage.setItem(
+      RATE_CARD_TEMPLATES_KEY,
+      JSON.stringify(nextTemplates),
+    );
+    notify(`Rate card template "${template.name}" updated`);
+  }
+
+  function deleteRateCardTemplate(templateId: string) {
+    const nextTemplates = rateCardTemplates.filter(
+      (template) => template.id !== templateId,
+    );
+    setRateCardTemplates(nextTemplates);
+    window.localStorage.setItem(
+      RATE_CARD_TEMPLATES_KEY,
+      JSON.stringify(nextTemplates),
+    );
+    notify("Rate card template deleted");
+  }
+
+  function createClientId() {
+    const year = new Date().getFullYear();
+    const nextNumber =
+      clients.reduce((highest, client) => {
+        const match = client.id.match(/(\d+)$/);
+        return Math.max(highest, match ? Number(match[1]) : 0);
+      }, 0) + 1;
+    return `CLT-${year}-${String(nextNumber).padStart(4, "0")}`;
+  }
+
+  function saveClient(client: Client) {
+    if (!isCeo && !isHoo) {
+      return { ok: false, message: "Only the CEO and Head of Operations can manage clients." };
+    }
+    const duplicate = clients.some(
+      (existing) =>
+        existing.id !== client.id &&
+        (existing.name.trim().toLowerCase() === client.name.trim().toLowerCase() ||
+          (client.email &&
+            existing.email.trim().toLowerCase() === client.email.trim().toLowerCase())),
+    );
+    if (duplicate) {
+      return { ok: false, message: "A client with this name or email already exists." };
+    }
+    const savedClient = {
+      ...client,
+      id: client.id || createClientId(),
+    };
+    const exists = clients.some((existing) => existing.id === savedClient.id);
+    persistClients(
+      exists
+        ? clients.map((existing) => (existing.id === savedClient.id ? savedClient : existing))
+        : [savedClient, ...clients],
+    );
+    return { ok: true };
+  }
+
+  function deleteClient(clientId: string) {
+    if (!isCeo && !isHoo) {
+      return { ok: false, message: "Only the CEO and Head of Operations can delete clients." };
+    }
+    if (projects.some((project) => project.clientId === clientId)) {
+      return { ok: false, message: "This client has linked projects and cannot be deleted." };
+    }
+    persistClients(clients.filter((client) => client.id !== clientId));
+    return { ok: true };
+  }
+
+  function createQuickClient(name: string) {
+    if (!isCeo && !isHoo) return null;
+    const normalizedName = name.trim();
+    if (!normalizedName || clients.some((client) => client.name.toLowerCase() === normalizedName.toLowerCase())) {
+      return null;
+    }
+    const client: Client = {
+      id: createClientId(),
+      name: normalizedName,
+      contactPerson: "",
+      phone: "",
+      email: "",
+      address: "",
+      type: "Company",
+      notes: "",
+      createdAt: new Date().toISOString().slice(0, 10),
+    };
+    persistClients([client, ...clients]);
+    return client;
   }
 
   function addNotification(notification: Omit<Notification, "id" | "time">) {
@@ -241,19 +421,38 @@ export function Dashboard({
       return;
     }
     const existing = projects.some((item) => item.id === project.id);
+    const savedProject =
+      existing &&
+      isHoo &&
+      project.approvalStatus === "Changes Requested"
+        ? {
+            ...project,
+            approvalStatus: "Under Review" as const,
+            submissionHistory: [
+              ...(project.submissionHistory ?? []),
+              { date: new Date().toISOString().slice(0, 10), status: "Under Review", actor: user.name },
+            ],
+          }
+        : !existing && isHoo
+          ? {
+              ...project,
+              approvalStatus: "Under Review" as const,
+              progressStatus: "Upcoming" as const,
+            }
+          : project;
     setProjects((current) =>
       existing
-        ? current.map((item) => (item.id === project.id ? project : item))
-        : [project, ...current],
+        ? current.map((item) => (item.id === savedProject.id ? savedProject : item))
+        : [savedProject, ...current],
     );
     if (!existing && role === "hoo") {
       setApprovals((current) => ({
         ...current,
-        [project.id]: { status: "Pending approval", comment: "" },
+        [savedProject.id]: { status: "Pending approval", comment: "" },
       }));
       addNotification({
         title: "New project requires approval",
-        detail: `Head of Operations submitted ${project.name}.`,
+        detail: `Head of Operations submitted ${savedProject.name}.`,
         kind: "Project approval",
         recipient: "ceo",
       });
@@ -262,19 +461,79 @@ export function Dashboard({
     notify("Project saved successfully");
   }
 
+  function submitProductionProject(project: Project, quotation: Quotation) {
+    setProjects((current) => [
+      project,
+      ...current.filter((item) => item.id !== project.id),
+    ]);
+    setCreatedQuotations((current) => [
+      quotation,
+      ...current.filter(
+        (item) => item.id !== quotation.id && item.projectId !== quotation.projectId,
+      ),
+    ]);
+    setApprovals((current) => ({
+      ...current,
+      [project.id]: { status: "Pending approval", comment: "" },
+    }));
+    addNotification({
+      title: "Project and quotation submitted",
+      detail: `${project.id} and ${quotation.id} are linked and under review.`,
+      kind: "Project approval",
+      recipient: "ceo",
+    });
+  }
+
+  function updateProductionProject(project: Project, quotation: Quotation) {
+    setProjects((current) =>
+      current.map((item) => (item.id === project.id ? project : item)),
+    );
+    setCreatedQuotations((current) => [
+      quotation,
+      ...current.filter(
+        (item) => item.id !== quotation.id && item.projectId !== quotation.projectId,
+      ),
+    ]);
+    setWorkspaceEdit(null);
+    setShowProjectWorkspace(false);
+    notify(`${project.id} and ${quotation.id} updated without creating duplicates`);
+  }
+
   function updateApproval(project: Project, status: Approval, comment: string) {
+    const nextApprovalStatus =
+      status === "Pending approval" ? "Under Review" : status;
     setApprovals((current) => ({
       ...current,
       [project.id]: { status, comment },
     }));
-    if (status === "Approved" || status === "Rejected") {
-      setProjects((current) =>
-        current.map((item) =>
-          item.id === project.id
-            ? { ...item, status: status === "Approved" ? "Upcoming" : "Rejected" }
-            : item,
-        ),
-      );
+    setProjects((current) =>
+      current.map((item) =>
+        item.id === project.id
+          ? {
+              ...item,
+              approvalStatus: nextApprovalStatus,
+              progressStatus:
+                status === "Approved"
+                  ? item.progressStatus ?? "Upcoming"
+                  : item.progressStatus,
+              status: status === "Approved"
+                ? item.progressStatus ?? "Upcoming"
+                : status === "Rejected"
+                  ? "Rejected"
+                  : item.status,
+              revisionComments:
+                status === "Changes Requested"
+                  ? [...(item.revisionComments ?? []), comment].filter(Boolean)
+                  : item.revisionComments,
+              submissionHistory: [
+                ...(item.submissionHistory ?? []),
+                { date: new Date().toISOString().slice(0, 10), status: nextApprovalStatus, actor: user.name },
+              ],
+            }
+          : item,
+      ),
+    );
+    if (status === "Approved" || status === "Rejected" || status === "Changes Requested") {
       addNotification({
         title: `Project ${status.toLowerCase()}`,
         detail: `${project.name} was ${status.toLowerCase()} by the CEO.`,
@@ -353,6 +612,17 @@ export function Dashboard({
     : isProduction
       ? productionNav
     : nav.filter((item) => item.label !== "Expenses");
+  const showResources = isCeo || isHoo;
+  const navigationItems = [
+    ...(showResources
+      ? visibleNav
+        .filter((item) => item.label !== "Clients")
+        .concat({ label: "Resources", icon: Package })
+      : visibleNav),
+  ];
+  if (!navigationItems.some((item) => item.label === "Reminders")) {
+    navigationItems.push({ label: "Reminders", icon: CalendarCheck2 });
+  }
 
   return (
     <div className={"app-shell is-visible " + (isHoo ? "heo-shell" : "")}>
@@ -385,24 +655,28 @@ export function Dashboard({
           {isHoo ? "HEO CONTROL CENTRE" : user.role}
         </div>
         <nav className="primary-nav">
-          {visibleNav.map(({ label, icon: Icon }) => (
+          {navigationItems.map(({ label, icon: Icon }) => (
             <button
               key={label}
               className={"nav-item " + (active === label ? "active" : "")}
               onClick={() => {
-                setActive(label);
+                if (label === "Quotations") {
+                  setProductionView("Quotations");
+                  setActive("Production");
+                } else {
+                  setActive(label);
+                  if (label === "Production") setProductionView("Projects");
+                }
                 setMobile(false);
               }}
             >
               <Icon size={17} />
               {label}
-              {(label === "Projects" || label === "Project Approvals") && (
+              {label === "Project Approvals" && (
                 <span className="nav-count">
-                  {label === "Projects"
-                    ? projects.length
-                    : Object.values(approvals).filter(
-                        (item) => item.status === "Pending approval",
-                      ).length}
+                  {Object.values(approvals).filter(
+                    (item) => item.status === "Pending approval",
+                  ).length}
                 </span>
               )}
             </button>
@@ -477,9 +751,11 @@ export function Dashboard({
                 onNavigate={(section, view) => {
                   // Map view-based navigation to the new individual sidebar sections
                   if (view === "quotations") {
-                    setActive("Quotations");
+                    setProductionView("Quotations");
+                    setActive("Production");
                   } else if (view === "invoices") {
-                    setActive("Invoices");
+                    setProductionView("Invoices");
+                    setActive("Production");
                   } else if (view === "payments") {
                     setActive("Payments");
                   } else if (view === "expenses") {
@@ -521,27 +797,6 @@ export function Dashboard({
               onSelect={setSelected}
             />
           )}
-          {/* ── Finance role: individual section routes ── */}
-          {active === "Quotations" && (
-            <QuotationManagement
-              projects={projects}
-              onNotify={notify}
-              onQuotationSubmitted={notifyQuotationSubmission}
-              initialProjectId={financeProjectId}
-              reviewChangesLabel={false}
-              reviewOnly={false}
-            />
-          )}
-          {active === "Invoices" && (
-            <InvoicePage
-              projects={projects}
-              canReview={false}
-              canSubmit={isFinance}
-              initialSection="invoices"
-              onSubmitted={notifyInvoiceSubmission}
-              onRevisionRequested={notifyInvoiceRevision}
-            />
-          )}
           {active === "Payments" && (
             <PaymentsPage
               projects={projects}
@@ -553,17 +808,71 @@ export function Dashboard({
             <FinancePage
               projects={projects}
               onNotify={notify}
-              onQuotationSubmitted={notifyQuotationSubmission}
-              onInvoiceSubmitted={notifyInvoiceSubmission}
-              onInvoiceRevisionRequested={notifyInvoiceRevision}
-              initialProjectId={financeProjectId}
-              initialView={isCeo ? "quotations" : financeInitialView === "quotations" ? "quotations" : financeInitialView === "expenses" ? "expenses" : "invoices"}
-              canReviewInvoices={isCeo}
-              canSubmit={isFinance}
-              reviewOnlyQuotations={isCeo}
               role={role}
             />
           )}
+          {active === "Resources" && showResources && (
+            <section className="page-section resources-page">
+              <PageHeader
+                eyebrow="RESOURCES"
+                title="Resources"
+                copy="Manage the people, equipment and operational resources used by CMCS."
+              />
+              <div className="resources-command-bar">
+                <div>
+                  <span className="eyebrow">RESOURCE WORKSPACE</span>
+                  <strong>{resourceTab} workspace</strong>
+                  <p>{resourceMeta[resourceTab].description}</p>
+                </div>
+                <span className="resources-command-status"><span /> Live workspace</span>
+              </div>
+              <div className="resources-tabs" role="tablist" aria-label="Resource categories">
+                {resourceTabs.map((tab) => (
+                  <button
+                    key={tab}
+                    role="tab"
+                    aria-selected={resourceTab === tab}
+                    className={resourceTab === tab ? "selected" : ""}
+                    onClick={() => setResourceTab(tab)}
+                  >
+                    {(() => { const Icon = resourceMeta[tab].icon; return <Icon size={15} />; })()}
+                    <span>{tab}</span>
+                    <small>{resourceMeta[tab].count}</small>
+                  </button>
+                ))}
+              </div>
+              {resourceTab === "Client" && (
+                <ClientManagementPage
+                  clients={clients}
+                  projects={projects}
+                  user={user}
+                  canManage={isCeo || isHoo}
+                  onSave={saveClient}
+                  onDelete={deleteClient}
+                />
+              )}
+              {resourceTab === "Equipment" && <EquipmentManagementPage />}
+              {resourceTab === "Staff" && <StaffManagementPage />}
+              {resourceTab !== "Client" && resourceTab !== "Equipment" && resourceTab !== "Staff" && (
+                <ModulePage
+                  active={`Resources / ${resourceTab}`}
+                  user={user}
+                  onNotify={notify}
+                />
+              )}
+            </section>
+          )}
+          {active === "Clients" && !showResources && (
+            <ClientManagementPage
+              clients={clients}
+              projects={projects}
+              user={user}
+              canManage={isCeo || isHoo}
+              onSave={saveClient}
+              onDelete={deleteClient}
+            />
+          )}
+          {active === "Equipment" && <EquipmentManagementPage />}
           {active === "Expenses" && (
             <ExpensesPage projects={projects} role={role} onNotify={notify} />
           )}
@@ -573,7 +882,7 @@ export function Dashboard({
           {active === "Equipment Rental" && (
             <EquipmentRentalPage projects={projects} onNotify={notify} />
           )}
-          {isTechnical && active !== "Dashboard" && (
+          {isTechnical && active !== "Dashboard" && active !== "Clients" && (
             <TechnicalEmployeePage
               active={active}
               user={user}
@@ -581,7 +890,10 @@ export function Dashboard({
               onNotify={notify}
             />
           )}
-          {isProduction && active !== "Dashboard" && (
+          {isProduction &&
+            active !== "Dashboard" &&
+            active !== "Clients" &&
+            active !== "Production" && (
             <ProductionPage
               active={active}
               user={user}
@@ -590,14 +902,14 @@ export function Dashboard({
             />
           )}
           {/* ── Administrator: full admin department ── */}
-          {isAdministrator && (
+          {isAdministrator && active !== "Clients" && (
             <AdministrationPage
               active={active}
               user={user}
               onNotify={notify}
             />
           )}
-          {isAdministrationEmployee && active !== "Dashboard" && active !== "Employees" && (
+          {isAdministrationEmployee && active !== "Dashboard" && active !== "Employees" && active !== "Clients" && (
             <AdministrationEmployeePage active={active} user={user} onNotify={notify} />
           )}
           {isAdministrationEmployee && active === "Employees" && (
@@ -614,17 +926,23 @@ export function Dashboard({
                 {visibleNotifications.map((notification) => (
                   <button
                     key={notification.id}
-                    onClick={() =>
-                      setActive(
-                        notification.kind === "Quotation"
-                          ? (isFinance ? "Quotations" : "Finance")
-                          : notification.kind === "Invoice"
-                            ? (isFinance ? "Invoices" : "Finance")
-                          : notification.kind === "Project approval"
-                            ? "Project Approvals"
-                            : "Projects",
-                      )
-                    }
+                    onClick={() => {
+                      if (notification.kind === "Invoice") {
+                        setProductionView("Invoices");
+                        setActive("Production");
+                      } else if (notification.kind === "Quotation" && isFinance) {
+                        setProductionView("Quotations");
+                        setActive("Production");
+                      } else {
+                        setActive(
+                          notification.kind === "Project approval"
+                              ? "Project Approvals"
+                              : notification.kind === "Quotation"
+                                ? "Production"
+                                : "Projects",
+                        );
+                      }
+                    }}
                   >
                     <span className="notification-icon">
                       <Bell size={13} />
@@ -640,66 +958,184 @@ export function Dashboard({
               </div>
             </section>
           )}
-          {active === "Projects" && (
-            <section className="page-section">
+          {active === "Reminders" && <RemindersPage />}
+          {active === "Production" && (
+            <section className="page-section production-module">
               <PageHeader
-                eyebrow=""
-                title="Projects"
-                copy=""
-                action={
-                  isCeo || isFinance
-                    ? undefined
-                    : isHoo
-                      ? "Create project"
-                      : "New project"
-                }
-                onAction={() => setDialog("new")}
+                eyebrow="PRODUCTION"
+                title="Production"
+                copy="Manage projects and review the production calendar."
               />
-              <div className="filter-bar">
-                <label className="custom-filter">
-                  Filter projects
-                  <select
-                    value={customFilter}
-                    onChange={(e) => setCustomFilter(e.target.value)}
+              <div className="production-subsections">
+                <div className="production-subsection-tabs">
+                  <button
+                    className={productionView === "Projects" ? "active" : ""}
+                    onClick={() => setProductionView("Projects")}
                   >
-                    <option value="All">All projects</option>
-                    <option value="In Progress">In progress</option>
-                    <option value="Upcoming">Upcoming</option>
-                    <option value="Completed">Completed</option>
-                  </select>
-                </label>
-                <label className="inline-search">
-                  <Search size={15} />
-                  <input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search projects..."
+                    <ClipboardList size={15} />
+                    Projects
+                    <span className="nav-count">{projects.length}</span>
+                  </button>
+                  <button
+                    className={
+                      productionView === "Project Calendar" ? "active" : ""
+                    }
+                    onClick={() => setProductionView("Project Calendar")}
+                  >
+                    <GanttChartSquare size={15} />
+                    Project Calendar
+                  </button>
+                  <button
+                    className={productionView === "Rate Card" ? "active" : ""}
+                    onClick={() => setProductionView("Rate Card")}
+                  >
+                    <CircleDollarSign size={15} />
+                    Rate Card
+                  </button>
+                  {(isCeo || isHoo || isFinance) && (
+                    <button
+                      className={productionView === "Invoices" ? "active" : ""}
+                      onClick={() => setProductionView("Invoices")}
+                    >
+                      <ReceiptText size={15} />
+                      Invoices
+                    </button>
+                  )}
+                  {(isCeo || isHoo || isFinance) && (
+                    <button
+                      className={productionView === "Quotations" ? "active" : ""}
+                      onClick={() => setProductionView("Quotations")}
+                    >
+                      <FileText size={15} />
+                      Quotations
+                    </button>
+                  )}
+                </div>
+                {productionView === "Projects" ? (
+                  <>
+                    {showProjectWorkspace ? (
+                      <ProjectCreationView
+                        projects={projects}
+                        user={user}
+                        project={workspaceEdit?.project}
+                        quotation={workspaceEdit?.quotation}
+                        onBack={() => {
+                          setWorkspaceEdit(null);
+                          setShowProjectWorkspace(false);
+                        }}
+                        onNotify={notify}
+                        onSubmitProject={submitProductionProject}
+                        onUpdateProject={updateProductionProject}
+                      />
+                    ) : (
+                    <>
+                    <PageHeader
+                      eyebrow=""
+                      title="Projects"
+                      copy=""
+                      action={
+                        isCeo || isFinance
+                          ? undefined
+                          : isHoo
+                            ? "Create project"
+                            : "New project"
+                      }
+                      onAction={() =>
+                        isHoo
+                          ? setShowProjectWorkspace(true)
+                          : setDialog("new")
+                      }
+                    />
+                    <div className="filter-bar">
+                      <label className="custom-filter">
+                        Filter projects
+                        <select
+                          value={customFilter}
+                          onChange={(e) => setCustomFilter(e.target.value)}
+                        >
+                          <option value="All">All projects</option>
+                          <option value="Under Review">Under review</option>
+                          <option value="Approved">Approved</option>
+                          <option value="Changes Requested">Changes requested</option>
+                          <option value="Rejected">Rejected</option>
+                        </select>
+                      </label>
+                      <label className="inline-search">
+                        <Search size={15} />
+                        <input
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                          placeholder="Search projects..."
+                        />
+                      </label>
+                    </div>
+                    <div className="panel">
+                      {filtered.length ? (
+                        <ProjectTable projects={filtered} onSelect={setSelected} />
+                      ) : (
+                        <div className="empty-state">
+                          <Search size={30} />
+                          <h3>No matching projects</h3>
+                          <p>Try another keyword or clear the current filters.</p>
+                        </div>
+                      )}
+                    </div>
+                    </>
+                    )}
+                  </>
+                ) : productionView === "Project Calendar" ? (
+                  <ProjectCalendar
+                    projects={projects.filter((project) =>
+                      ["Upcoming", "In Progress", "Completed"].includes(
+                        project.status,
+                      ),
+                    )}
+                    onSelect={setSelected}
                   />
-                </label>
-              </div>
-              <div className="panel">
-                {filtered.length ? (
-                  <ProjectTable projects={filtered} onSelect={setSelected} />
+                ) : productionView === "Rate Card" ? (
+                  <RateCardPage
+                    canManage={isCeo || isHoo}
+                    templates={rateCardTemplates}
+                    onCreate={saveRateCardTemplate}
+                    onUpdate={updateRateCardTemplate}
+                    onDelete={deleteRateCardTemplate}
+                    onNotify={notify}
+                    preparedBy={user.name}
+                  />
+                ) : productionView === "Invoices" ? (
+                  <InvoicePage
+                    projects={projects}
+                    initialProjectId={invoiceProjectId}
+                    canReview={isCeo}
+                    canSubmit={isFinance}
+                    initialSection="invoices"
+                    onSubmitted={notifyInvoiceSubmission}
+                    onRevisionRequested={notifyInvoiceRevision}
+                  />
                 ) : (
-                  <div className="empty-state">
-                    <Search size={30} />
-                    <h3>No matching projects</h3>
-                    <p>Try another keyword or clear the current filters.</p>
-                  </div>
+                  <QuotationManagement
+                    projects={projects}
+                    additionalQuotations={createdQuotations}
+                    onNotify={notify}
+                    onQuotationSubmitted={notifyQuotationSubmission}
+                    onEditProject={(quotation, project) => {
+                      setWorkspaceEdit({ project, quotation });
+                      setProductionView("Projects");
+                      setActive("Production");
+                      setShowProjectWorkspace(true);
+                    }}
+                    onOpenProject={(project) => {
+                      setWorkspaceEdit({ project });
+                      setProductionView("Projects");
+                      setActive("Production");
+                      setShowProjectWorkspace(true);
+                    }}
+                    initialProjectId={financeProjectId}
+                    reviewChangesLabel={false}
+                    reviewOnly={false}
+                  />
                 )}
               </div>
-            </section>
-          )}
-          {active === "Project Calendar" && (
-            <section className="page-section">
-              <ProjectCalendar
-                projects={projects.filter((project) =>
-                  ["Upcoming", "In Progress", "Completed"].includes(
-                    project.status,
-                  ),
-                )}
-                onSelect={setSelected}
-              />
             </section>
           )}
           {active === "Tasks" && isHoo && (
@@ -713,43 +1149,52 @@ export function Dashboard({
             "Documents",
             "Reports",
             "Settings",
+            "Staff",
           ].includes(active) && (
             <ModulePage active={active} user={user} onNotify={notify} />
           )}
         </div>
       </main>
-      {(dialog === "new" || dialog) && !isCeo && !isFinance && !isTechnical && (
+      {dialog === "new" && !isCeo && !isFinance && !isTechnical && (
         <ProjectDialog
-          project={dialog === "new" ? undefined : dialog}
           onClose={() => setDialog(null)}
           onSave={saveProject}
           currentUser={user}
           existingProjectIds={projects.map((project) => project.id)}
           isHoo={isHoo}
+          clients={clients}
+          onCreateClient={createQuickClient}
         />
       )}
       {selected && (
         <ProjectDetailModal
           selected={selected}
           isCeo={isCeo}
+          isHoo={isHoo}
           approval={approvals[selected.id]}
           onClose={() => setSelected(null)}
-          onEdit={() => {
-            setSelected(null);
-            setDialog(selected);
-          }}
           isFinance={isFinance}
+          invoice={invoiceSeed.find((invoice) => invoice.projectId === selected.id)}
           quotation={
-            isFinance
-              ? quotationSeed.find((quotation) => quotation.projectId === selected.id)
-              : undefined
+            quotationSeed.find((quotation) => quotation.projectId === selected.id)
           }
-          onQuotationAction={
-            isFinance
+          onQuotationAction={() => {
+            setSelected(null);
+            setFinanceProjectId(selected.id);
+            setProductionView("Quotations");
+            setActive("Production");
+          }}
+          onInvoiceAction={() => {
+            setSelected(null);
+            setInvoiceProjectId(selected.id);
+            setProductionView("Invoices");
+            setActive("Production");
+          }}
+          onResubmit={
+            isHoo && selected.approvalStatus === "Changes Requested"
               ? () => {
+                  updateApproval(selected, "Pending approval", "");
                   setSelected(null);
-                  setFinanceProjectId(selected.id);
-                  setActive("Quotations");
                 }
               : undefined
           }

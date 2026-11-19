@@ -1256,6 +1256,7 @@ function PaymentDialog({
 
 export function InvoicePage({
   projects,
+  initialProjectId,
   canReview = false,
   canSubmit = false,
   initialSection = "invoices",
@@ -1263,6 +1264,7 @@ export function InvoicePage({
   onRevisionRequested,
 }: {
   projects: Project[];
+  initialProjectId?: string | null;
   canReview?: boolean;
   canSubmit?: boolean;
   initialSection?: "invoices" | "payments";
@@ -1296,10 +1298,13 @@ export function InvoicePage({
 
   const selected = invoices.find((inv) => inv.id === selectedId);
   const selectedProject = selected ? projectFor(selected) : undefined;
+  const visibleInvoices = initialProjectId
+    ? invoices.filter((invoice) => invoice.projectId === initialProjectId)
+    : invoices;
 
   const filteredInvoices = useMemo(
     () =>
-      invoices.filter((invoice) => {
+      visibleInvoices.filter((invoice) => {
         const matchesFilter =
           filter === "All" || displayStatus(invoice.status) === filter;
         const matchesQuery = `${invoice.id} ${invoice.quotationId} ${
@@ -1309,21 +1314,21 @@ export function InvoicePage({
           .includes(query.toLowerCase());
         return matchesFilter && matchesQuery;
       }),
-    [filter, invoices, query],
+    [filter, query, visibleInvoices],
   );
 
   const summary = {
-    total: invoices.length,
-    pending: invoices.filter(
+    total: visibleInvoices.length,
+    pending: visibleInvoices.filter(
       (inv) => displayStatus(inv.status) === "Pending",
     ).length,
-    revisions: invoices.filter(
+    revisions: visibleInvoices.filter(
       (inv) => displayStatus(inv.status) === "Revision Requested",
     ).length,
-    approved: invoices.filter(
+    approved: visibleInvoices.filter(
       (inv) => displayStatus(inv.status) === "Approved",
     ).length,
-    rejected: invoices.filter(
+    rejected: visibleInvoices.filter(
       (inv) => displayStatus(inv.status) === "Rejected",
     ).length,
   };

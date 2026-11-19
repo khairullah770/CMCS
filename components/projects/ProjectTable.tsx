@@ -1,7 +1,16 @@
 import React from "react";
-import { ArrowUpRight } from "lucide-react";
-import { Project } from "../../lib/types";
+import { Eye } from "lucide-react";
+import { Project, ProjectApprovalStatus, ProjectProgressStatus } from "../../lib/types";
 import { formatDate, statusColors } from "../../lib/dummy-data/mock-data";
+
+const approvalStatus = (project: Project): ProjectApprovalStatus =>
+  project.approvalStatus ??
+  (project.status === "Rejected" ? "Rejected" : "Approved");
+
+const progressStatus = (project: Project): ProjectProgressStatus | null =>
+  approvalStatus(project) === "Approved"
+    ? project.progressStatus ?? (project.status === "Rejected" ? "Upcoming" : project.status)
+    : null;
 
 export function ProjectTable({
   projects,
@@ -17,50 +26,62 @@ export function ProjectTable({
       <table>
         <thead>
           <tr>
-            <th>Project</th>
-            <th>Project Lead</th>
-            <th>Status</th>
-            {showStartDate && <th>Start date</th>}
-            <th>End date</th>
-            <th />
+            <th>Project ID</th>
+            <th>Project title</th>
+            <th>Client</th>
+            <th>Production manager</th>
+            <th>Created date</th>
+            <th>Approval status</th>
+            <th>Progress</th>
+            {showStartDate && <th>Production dates</th>}
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {projects.map((p) => (
             <tr key={p.id}>
               <td>
+                <strong className="project-id">{p.id}</strong>
+              </td>
+              <td>
                 <button className="project-link" onClick={() => onSelect(p)}>
                   <span
                     className="project-dot"
                     style={{ background: statusColors[p.status] }}
                   />
-                  <span>
-                    <strong>{p.name}</strong>
-                    <small>
-                      {p.id} · {p.client}
-                    </small>
-                  </span>
+                  <strong>{p.name}</strong>
                 </button>
               </td>
+              <td>{p.client}</td>
               <td>{p.owner}</td>
+              <td>{formatDate(p.createdAt ?? p.start)}</td>
               <td>
                 <span
                   className={
-                    "status-pill " + p.status.toLowerCase().replace(" ", "-")
+                    "status-pill project-approval-" +
+                    approvalStatus(p).toLowerCase().replaceAll(" ", "-")
                   }
                 >
-                  {p.status}
+                  {approvalStatus(p)}
                 </span>
               </td>
-              {showStartDate && <td>{formatDate(p.start)}</td>}
-              <td>{formatDate(p.end)}</td>
               <td>
-                <button
-                  className="icon-button"
-                  onClick={() => onSelect(p)}
-                  aria-label="Open project"
-                >
-                  <ArrowUpRight size={16} />
+                {progressStatus(p) ? (
+                  <span className={"status-pill " + progressStatus(p)!.toLowerCase().replaceAll(" ", "-")}>
+                    {progressStatus(p)}
+                  </span>
+                ) : (
+                  <span className="muted-value">Not started</span>
+                )}
+              </td>
+              {showStartDate && (
+                <td>
+                  {formatDate(p.start)} - {formatDate(p.end)}
+                </td>
+              )}
+              <td>
+                <button className="button button-secondary project-view-button" onClick={() => onSelect(p)}>
+                  <Eye size={14} /> View details
                 </button>
               </td>
             </tr>

@@ -21,10 +21,19 @@ export type Role =
 
 export type Status = "In Progress" | "Upcoming" | "Completed" | "Rejected";
 
+export type ProjectApprovalStatus =
+  | "Under Review"
+  | "Approved"
+  | "Changes Requested"
+  | "Rejected";
+
+export type ProjectProgressStatus = "Upcoming" | "In Progress" | "Completed";
+
 export type Project = {
   id: string;
   name: string;
   client: string;
+  clientId?: string;
   owner: string;
   start: string;
   end: string;
@@ -33,6 +42,61 @@ export type Project = {
   department: string;
   budget: number;
   assignedEmployees?: string[];
+  approvalStatus?: ProjectApprovalStatus;
+  progressStatus?: ProjectProgressStatus;
+  createdAt?: string;
+  category?: string;
+  description?: string;
+  services?: string[];
+  selectedEquipment?: string[];
+  resourceCosts?: number;
+  sellingAmount?: number;
+  discount?: number;
+  tax?: number;
+  paymentTerms?: string;
+  revisionComments?: string[];
+  submissionHistory?: { date: string; status: string; actor: string }[];
+};
+
+export type RateCardRate = {
+  cost: number;
+  selling: number;
+  type: "Internal" | "External";
+  unit: "Per Hour" | "Per Day" | "Per Project";
+  currency: "USD" | "AFN";
+};
+
+export type RateCardTemplate = {
+  id: string;
+  name: string;
+  functions: string[];
+  resourceKeys: string[];
+  rates: Record<string, RateCardRate>;
+  createdAt: string;
+  updatedAt: string;
+  validity?: string;
+};
+
+export type ClientType = "Individual" | "Company" | "Organization";
+
+export type Client = {
+  id: string;
+  name: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  address: string;
+  type: ClientType;
+  notes: string;
+  createdAt: string;
+  managedBy?: string;
+  prefix?: string;
+  firstName?: string;
+  lastName?: string;
+  jobTitle?: string;
+  production?: string;
+  interest?: string;
+  profileImage?: string;
 };
 
 export type TaskStatus = "Pending" | "In Progress" | "Completed";
@@ -59,7 +123,11 @@ export type EquipmentAssignment = {
   returnDate: string;
 };
 
-export type Approval = "Pending approval" | "Approved" | "Rejected";
+export type Approval =
+  | "Pending approval"
+  | "Approved"
+  | "Changes Requested"
+  | "Rejected";
 
 export type Notification = {
   id: string;

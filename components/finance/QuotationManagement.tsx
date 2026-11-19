@@ -29,10 +29,11 @@ import { PageHeader } from "../common/PageHeader";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
-type View = "list" | "details" | "form";
+type View = "list" | "details";
 type Filter =
   | "All"
   | "Draft"
+  | "Under Review"
   | "Pending approval"
   | "Approved"
   | "Rejected"
@@ -162,7 +163,9 @@ function QuotationStats({ quotations }: { quotations: Quotation[] }) {
     (sum, q) => sum + (q.total ?? 0),
     0,
   );
-  const pending = quotations.filter((q) => q.status === "Pending approval").length;
+  const pending = quotations.filter(
+    (q) => q.status === "Pending approval" || q.status === "Under Review",
+  ).length;
   const revisions = quotations.filter((q) => q.status === "Revision requested").length;
   const approved = quotations.filter((q) => q.status === "Approved").length;
 
@@ -218,16 +221,16 @@ function QuotationList({
   quotations,
   visibleProjects,
   onOpen,
+  onOpenProject,
   onEdit,
-  onCreate,
   reviewChangesLabel,
   reviewOnly,
 }: {
   quotations: Quotation[];
   visibleProjects: Project[];
   onOpen: (q: Quotation) => void;
+  onOpenProject: (project: Project) => void;
   onEdit: (q: Quotation) => void;
-  onCreate: (p: Project) => void;
   reviewChangesLabel: boolean;
   reviewOnly: boolean;
 }) {
@@ -260,7 +263,7 @@ function QuotationList({
                 <FileText size={14} />
               </span>
               <span>
-                <strong>{quotation?.id ?? "No quotation"}</strong>
+                <strong>{quotation?.id ?? "Draft"}</strong>
                 <small>{project.id}</small>
               </span>
             </button>
@@ -315,10 +318,10 @@ function QuotationList({
                 </>
               ) : !reviewOnly ? (
                 <button
-                  className="qtn-action-btn qtn-action-btn-create"
-                  onClick={() => onCreate(project)}
+                  className="qtn-action-btn qtn-action-btn-ghost"
+                  onClick={() => onOpenProject(project)}
                 >
-                  <Plus size={12} /> Create
+                  Open <ArrowUpRight size={12} />
                 </button>
               ) : (
                 <span className="qtn-na">—</span>
@@ -410,7 +413,8 @@ function QuotationDetails({
   const [confirm, setConfirm] = useState<
     "approve" | "reject" | "revision" | null
   >(null);
-  const canReview = quotation.status === "Pending approval";
+  const canReview =
+    quotation.status === "Pending approval" || quotation.status === "Under Review";
 
   return (
     <section className="quotation-details-page">
@@ -955,7 +959,7 @@ function QuotationForm({
 
 // ─── PDF preview ──────────────────────────────────────────────────────────────
 
-function QuotationPreview({
+export function QuotationPreview({
   quotation,
   project,
 }: {
@@ -1018,7 +1022,6 @@ function QuotationPreview({
         <thead>
           <tr>
             <th>Item</th>
-            <th>Category / Subcategory</th>
             <th>Description</th>
             <th>Qty</th>
             <th>Days</th>
@@ -1030,11 +1033,6 @@ function QuotationPreview({
           {items.map((item, index) => (
             <tr key={item.id}>
               <td>{item.itemNo ?? index + 1}</td>
-              <td>
-                {item.category}
-                <br />
-                {item.subcategory}
-              </td>
               <td>{item.description || "—"}</td>
               <td>{item.quantity}</td>
               <td>{item.days}</td>
@@ -1043,7 +1041,7 @@ function QuotationPreview({
             </tr>
           ))}
           <tr className="quotation-paper-summary">
-            <td colSpan={5} rowSpan={4}>
+            <td colSpan={4} rowSpan={4}>
               Note:{" "}
               {quotation.notes ||
                 "The above rates correspond to the cost for one day."}
@@ -1079,27 +1077,39 @@ function QuotationPreview({
 
 export function QuotationManagement({
   projects,
+  additionalQuotations = [],
   onNotify,
   onQuotationSubmitted,
+  onEditProject,
+  onOpenProject,
   initialProjectId,
   reviewChangesLabel = false,
   reviewOnly = false,
 }: {
   projects: Project[];
+  additionalQuotations?: Quotation[];
   onNotify: (message: string) => void;
   onQuotationSubmitted?: (quotation: Quotation, project: Project) => void;
+  onEditProject?: (quotation: Quotation, project: Project) => void;
+  onOpenProject?: (project: Project) => void;
   initialProjectId?: string | null;
   reviewChangesLabel?: boolean;
   reviewOnly?: boolean;
 }) {
-  const [quotations, setQuotations] = useState<Quotation[]>(() =>
-    projects.flatMap((project) => {
-      const seed = quotationSeed.find(
-        (q) => q.projectId === project.id,
-      );
+  const [quotations, setQuotations] = useState<Quotation[]>(() => {
+    const generated = additionalQuotations.map((quotation) =>
+      enrich({ ...quotation }),
+    );
+    const generatedProjectIds = new Set(
+      generated.map((quotation) => quotation.projectId),
+    );
+    const seeded = projects.flatMap((project) => {
+      if (generatedProjectIds.has(project.id)) return [];
+      const seed = quotationSeed.find((q) => q.projectId === project.id);
       return seed ? [enrich({ ...seed })] : [];
-    }),
-  );
+    });
+    return [...generated, ...seeded];
+  });
   const [view, setView] = useState<View>("list");
   const [filter, setFilter] = useState<Filter>("All");
   const [query, setQuery] = useState("");
@@ -1120,8 +1130,11 @@ export function QuotationManagement({
         const matchesFilter =
           filter === "All" ||
           (quotation
-            ? quotation.status ===
-              (filter === "Review Changes" ? "Revision requested" : filter)
+            ? filter === "Under Review"
+              ? quotation.status === "Under Review" ||
+                quotation.status === "Pending approval"
+              : quotation.status ===
+                (filter === "Review Changes" ? "Revision requested" : filter)
             : filter === "Draft");
         const matchesQuery = `${quotation?.id ?? ""} ${project.name} ${project.client} ${project.id}`
           .toLowerCase()
@@ -1147,27 +1160,8 @@ export function QuotationManagement({
     const quotation = quotations.find(
       (item) => item.projectId === initialProjectId,
     );
-    const project = projects.find((item) => item.id === initialProjectId);
     if (quotation) openDetails(quotation);
-    else if (project && !reviewOnly) openForm(undefined, project);
   }, [initialProjectId]);
-
-  function openForm(quotation?: Quotation, projectForNew?: Project) {
-    if (quotation) {
-      setSelectedId(quotation.id);
-    } else {
-      const project =
-        projectForNew ??
-        projects.find(
-          (item) => !quotations.some((q) => q.projectId === item.id),
-        );
-      if (!project) return;
-      const draft = makeQuotation(project, quotations.length + 1);
-      setQuotations((current) => [draft, ...current]);
-      setSelectedId(draft.id);
-    }
-    setView("form");
-  }
 
   function updateQuotation(updated: Quotation) {
     setQuotations((current) =>
@@ -1255,8 +1249,6 @@ export function QuotationManagement({
             eyebrow="FINANCE / QUOTATIONS"
             title="Quotation management"
             copy="Prepare, preview, and route Chinar TV quotations through approval."
-            action={reviewOnly ? undefined : "Create quotation"}
-            onAction={reviewOnly ? undefined : () => openForm()}
           />
 
           <QuotationStats quotations={quotations} />
@@ -1278,6 +1270,7 @@ export function QuotationManagement({
               >
                 <option value="All">All statuses</option>
                 <option value="Draft">Draft</option>
+                <option value="Under Review">Under Review</option>
                 <option value="Pending approval">Pending approval</option>
                 <option value={reviewChangesLabel ? "Review Changes" : "Revision requested"}>
                   {reviewChangesLabel ? "Review Changes" : "Revision requested"}
@@ -1292,8 +1285,15 @@ export function QuotationManagement({
             quotations={quotations}
             visibleProjects={filteredProjects}
             onOpen={openDetails}
-            onEdit={(q) => openForm(q)}
-            onCreate={(p) => openForm(undefined, p)}
+            onOpenProject={(project) => onOpenProject?.(project)}
+            onEdit={(q) => {
+              const project = projects.find((item) => item.id === q.projectId);
+              if (onEditProject && project) {
+                onEditProject(q, project);
+              } else {
+                openDetails(q);
+              }
+            }}
             reviewChangesLabel={reviewChangesLabel}
             reviewOnly={reviewOnly}
           />
@@ -1306,23 +1306,15 @@ export function QuotationManagement({
           quotation={selected}
           project={selectedProject}
           onBack={() => setView("list")}
-          onEdit={() => openForm(selected)}
+          onEdit={() =>
+            onEditProject && selectedProject
+              ? onEditProject(selected, selectedProject)
+              : setView("list")
+          }
           onPrint={() => window.print()}
           onDecide={decide}
           reviewChangesLabel={reviewChangesLabel}
           reviewOnly={reviewOnly}
-        />
-      )}
-
-      {/* ── FORM VIEW ── */}
-      {view === "form" && selected && selectedProject && (
-        <QuotationForm
-          quotation={selected}
-          project={selectedProject}
-          onBack={() => setView("list")}
-          onUpdate={updateQuotation}
-          onSave={saveDraft}
-          onSubmit={submit}
         />
       )}
 

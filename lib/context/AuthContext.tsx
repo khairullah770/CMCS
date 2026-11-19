@@ -1,9 +1,12 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { users } from '../dummy-data/mock-data';
 
 // API Base URL from environment variable
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+const LOCAL_USER_STORAGE_KEY = 'cmcs-demo-user';
+const LOCAL_ACCESS_TOKEN = 'cmcs-demo-access-token';
 
 interface User {
   id: string;
@@ -52,6 +55,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Load tokens from localStorage on mount
   useEffect(() => {
+    const storedLocalUser = localStorage.getItem(LOCAL_USER_STORAGE_KEY);
+    if (storedLocalUser) {
+      try {
+        setUser(JSON.parse(storedLocalUser));
+        setAccessToken(LOCAL_ACCESS_TOKEN);
+        setIsLoading(false);
+        return;
+      } catch (error) {
+        console.error('Failed to restore local demo session:', error);
+        localStorage.removeItem(LOCAL_USER_STORAGE_KEY);
+      }
+    }
+
     const storedAccessToken = localStorage.getItem('accessToken');
     const storedRefreshToken = localStorage.getItem('refreshToken');
 
@@ -92,8 +108,37 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }
 
-  // Login function
+  // Local demo login. The backend login implementation remains below for later use.
   async function login(email: string, password: string) {
+    const demoUser = Object.values(users).find(
+      (candidate) =>
+        candidate.email.toLowerCase() === email.trim().toLowerCase() &&
+        candidate.password === password,
+    );
+
+    if (!demoUser) {
+      throw new Error('Invalid email or password');
+    }
+
+    const localUser: User = {
+      id: demoUser.employeeId,
+      employeeId: demoUser.employeeId,
+      email: demoUser.email,
+      firstName: demoUser.firstName,
+      lastName: demoUser.name.slice(demoUser.firstName.length).trim(),
+      name: demoUser.name,
+      role: demoUser.role,
+      department: demoUser.department,
+      status: 'active',
+    };
+
+    localStorage.setItem(LOCAL_USER_STORAGE_KEY, JSON.stringify(localUser));
+    setAccessToken(LOCAL_ACCESS_TOKEN);
+    setRefreshToken(null);
+    setUser(localUser);
+  }
+
+  async function loginWithBackend(email: string, password: string) {
     const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
       method: 'POST',
       headers: {
@@ -121,6 +166,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Logout function
   async function logout() {
+    localStorage.removeItem(LOCAL_USER_STORAGE_KEY);
+    setAccessToken(null);
+
     if (refreshToken) {
       try {
         await fetch(`${API_BASE_URL}/api/auth/logout`, {

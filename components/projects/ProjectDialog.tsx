@@ -1,8 +1,8 @@
 "use client";
 
 import React, { FormEvent, useState } from "react";
-import { X } from "lucide-react";
-import { Project, User } from "../../lib/types";
+import { Plus, X } from "lucide-react";
+import { Client, Project, User } from "../../lib/types";
 import { users } from "../../lib/dummy-data/mock-data";
 
 export function ProjectDialog({
@@ -12,6 +12,8 @@ export function ProjectDialog({
   currentUser,
   existingProjectIds = [],
   isHoo = false,
+  clients = [],
+  onCreateClient,
 }: {
   project?: Project;
   onClose: () => void;
@@ -19,6 +21,8 @@ export function ProjectDialog({
   currentUser: User;
   existingProjectIds?: string[];
   isHoo?: boolean;
+  clients?: Client[];
+  onCreateClient?: (name: string) => Client | null;
 }) {
   const departmentKey = (user: User) =>
     user.employeeId.split("-")[1]?.toLowerCase() ?? "";
@@ -37,6 +41,9 @@ export function ProjectDialog({
   );
   const [name, setName] = useState(project?.name ?? "");
   const [client, setClient] = useState(project?.client ?? "");
+  const [clientId, setClientId] = useState(project?.clientId ?? "");
+  const [showQuickClient, setShowQuickClient] = useState(false);
+  const [quickClientName, setQuickClientName] = useState("");
   const [projectId, setProjectId] = useState(
     project?.id ?? `PRJ-2026-${String(Date.now()).slice(-4)}`,
   );
@@ -50,6 +57,20 @@ export function ProjectDialog({
   const [start, setStart] = useState(project?.start ?? "2026-10-15");
   const [end, setEnd] = useState(project?.end ?? "");
   const [error, setError] = useState("");
+  const isRevision = isHoo && project?.approvalStatus === "Changes Requested";
+
+  function addQuickClient() {
+    const created = onCreateClient?.(quickClientName);
+    if (!created) {
+      setError("Enter a new client name that is not already registered.");
+      return;
+    }
+    setClient(created.name);
+    setClientId(created.id);
+    setQuickClientName("");
+    setShowQuickClient(false);
+    setError("");
+  }
 
   function save(e: FormEvent) {
     e.preventDefault();
@@ -83,6 +104,7 @@ export function ProjectDialog({
             id: normalizedId,
             name: name.trim(),
             client: client.trim(),
+            clientId: clientId || undefined,
             owner: isHoo ? lead : project?.owner ?? "Unassigned",
             assignedEmployees: isHoo ? assignedEmployees : project?.assignedEmployees,
             start,
@@ -160,13 +182,34 @@ export function ProjectDialog({
             />
           </label>
           <label>
-            Client Name
-            <input
-              required
-              value={client}
-              onChange={(e) => setClient(e.target.value)}
-              placeholder="e.g. UNDP"
-            />
+            Client
+            {isHoo ? (
+              <>
+                <select
+                  required
+                  value={clientId}
+                  onChange={(e) => {
+                    const selectedClient = clients.find((item) => item.id === e.target.value);
+                    setClientId(e.target.value);
+                    setClient(selectedClient?.name ?? "");
+                  }}
+                >
+                  <option value="">Select an existing client</option>
+                  {clients.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>)}
+                </select>
+                <button type="button" className="dialog-inline-action" onClick={() => setShowQuickClient((current) => !current)}>
+                  <Plus size={13} /> Add new client
+                </button>
+                {showQuickClient && (
+                  <div className="quick-client-form">
+                    <input value={quickClientName} onChange={(e) => setQuickClientName(e.target.value)} placeholder="New client name" />
+                    <button type="button" className="button button-secondary" onClick={addQuickClient}>Add</button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <input required value={client} onChange={(e) => setClient(e.target.value)} placeholder="e.g. UNDP" />
+            )}
           </label>
           {isHoo && (
             <>
@@ -237,7 +280,7 @@ export function ProjectDialog({
               Cancel
             </button>
             <button className="button button-primary" type="submit">
-              Save project
+              {isRevision ? "Save changes" : "Save project"}
             </button>
           </div>
         </form>

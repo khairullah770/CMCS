@@ -1,149 +1,209 @@
 "use client";
 
 import React from "react";
-import { X } from "lucide-react";
-import { Approval, Project, Quotation } from "../../lib/types";
-import { formatDate, money, parseDate } from "../../lib/dummy-data/mock-data";
+import {
+  ArrowLeft,
+  CalendarDays,
+  CheckCircle2,
+  FileText,
+  ReceiptText,
+  Users,
+  X,
+} from "lucide-react";
+import {
+  Approval,
+  Invoice,
+  Project,
+  ProjectApprovalStatus,
+  Quotation,
+} from "../../lib/types";
+import { formatDate, money } from "../../lib/dummy-data/mock-data";
 import { CeoApproval } from "../ceo/CeoApproval";
+
+const getApprovalStatus = (project: Project): ProjectApprovalStatus =>
+  project.approvalStatus ??
+  (project.status === "Rejected" ? "Rejected" : "Approved");
+
+const getProgressStatus = (project: Project) =>
+  getApprovalStatus(project) === "Approved"
+    ? project.progressStatus ?? project.status
+    : "Not started";
+
+function InfoCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="project-info-card">
+      <span>{label}</span>
+      <strong>{value || "—"}</strong>
+    </div>
+  );
+}
 
 export function ProjectDetailModal({
   selected,
   isCeo,
   isFinance,
+  isHoo = false,
   quotation,
+  invoice,
   approval,
   onClose,
-  onEdit,
   onQuotationAction,
+  onInvoiceAction,
+  onResubmit,
   onApprovalSubmit,
 }: {
   selected: Project;
   isCeo: boolean;
   isFinance?: boolean;
+  isHoo?: boolean;
   quotation?: Quotation;
+  invoice?: Invoice;
   approval?: { status: Approval; comment: string };
   onClose: () => void;
-  onEdit: () => void;
   onQuotationAction?: () => void;
+  onInvoiceAction?: () => void;
+  onResubmit?: () => void;
   onApprovalSubmit: (project: Project, status: Approval, comment: string) => void;
 }) {
-  const pStart = parseDate(selected.start);
-  const pEnd = parseDate(selected.end);
-  const duration = Math.max(
-    1,
-    Math.round((pEnd.getTime() - pStart.getTime()) / (1000 * 60 * 60 * 24)) + 1,
-  );
+  const projectApproval = getApprovalStatus(selected);
+  const progress = getProgressStatus(selected);
+  const totalCost = selected.resourceCosts ?? selected.budget;
+  const sellingAmount = selected.sellingAmount ?? selected.budget;
+  const discount = selected.discount ?? 0;
+  const tax = selected.tax ?? 0;
+  const profit = sellingAmount - totalCost - discount + tax;
 
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div className="dialog project-detail">
-        <div className="dialog-head">
-          <div>
-            <span className="eyebrow">PROJECT DETAIL</span>
-            <h2>{selected.name}</h2>
-            <p>
-              {selected.client} · {selected.id}
-            </p>
-          </div>
-          <button className="icon-button" onClick={onClose}>
+    <div className="project-detail-backdrop" role="presentation">
+      <section className="project-detail-screen" aria-label="Project details">
+        <header className="project-detail-header">
+          <button className="button button-secondary" onClick={onClose}>
+            <ArrowLeft size={15} /> Back to projects
+          </button>
+          <button className="icon-button" onClick={onClose} aria-label="Close project details">
             <X size={18} />
           </button>
-        </div>
-        <div className="detail-grid">
-          <span>
-            Project Lead<strong>{selected.owner}</strong>
-          </span>
-          <span>
-            Status
-            <strong
-              className={
-                "status-pill " +
-                selected.status.toLowerCase().replace(" ", "-")
-              }
-            >
-              {selected.status}
-            </strong>
-          </span>
-          <span>
-            Department<strong>{selected.department}</strong>
-          </span>
-          {selected.assignedEmployees?.length ? (
-            <span>
-              Assigned Employees
-              <strong>{selected.assignedEmployees.join(", ")}</strong>
+        </header>
+
+        <div className="project-detail-title">
+          <div>
+            <span className="eyebrow">PROJECT DETAILS / {selected.id}</span>
+            <h1>{selected.name}</h1>
+            <p>{selected.client} · Created {formatDate(selected.createdAt ?? selected.start)}</p>
+          </div>
+          <div className="project-detail-statuses">
+            <span className={`status-pill project-approval-${projectApproval.toLowerCase().replaceAll(" ", "-")}`}>
+              {projectApproval}
             </span>
-          ) : null}
-          <span>
-            Production Budget<strong>{money(selected.budget)}</strong>
-          </span>
-          <span>
-            Schedule
-            <strong>
-              {formatDate(selected.start)} → {formatDate(selected.end)}
-              <small style={{ fontWeight: 500, color: "#64748b", marginLeft: "5px" }}>
-                ({duration} days)
-              </small>
-            </strong>
-          </span>
-          <span>
-            Progress
-            <strong>
-              {selected.progress}% complete
-              <div
-                style={{
-                  marginTop: "6px",
-                  width: "100%",
-                  height: "6px",
-                  background: "#e2e8f0",
-                  borderRadius: "3px",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    width: `${selected.progress}%`,
-                    height: "100%",
-                    background: selected.progress >= 100 ? "#16a34a" : "#2563eb",
-                    borderRadius: "3px",
-                    transition: "width 0.3s ease",
-                  }}
-                />
-              </div>
-            </strong>
-          </span>
+            <span className={`status-pill ${progress.toLowerCase().replaceAll(" ", "-")}`}>
+              {progress}
+            </span>
+          </div>
         </div>
-        {isCeo && approval?.status === "Pending approval" ? (
-          <CeoApproval
-            project={selected}
-            approval={approval}
-            onSubmit={onApprovalSubmit}
-          />
-        ) : (
-          <div className="dialog-actions">
-            <button
-              className="button button-secondary"
-              onClick={onClose}
-            >
-              Close
-            </button>
-            {isFinance ? (
-              <button
-                className="button button-primary"
-                onClick={onQuotationAction}
-              >
-                {quotation ? "Open quotation" : "Create quotation"}
+
+        <div className="project-detail-actions">
+          <button className="button button-secondary" onClick={onQuotationAction}>
+            <FileText size={15} /> {quotation ? "View quotation" : "Quotation"}
+          </button>
+          <button className="button button-secondary" onClick={onInvoiceAction}>
+            <ReceiptText size={15} /> {invoice ? "View invoice" : "Invoice"}
+          </button>
+        </div>
+
+        {projectApproval === "Changes Requested" && (
+          <div className="project-revision-panel">
+            <div>
+              <strong>Changes requested</strong>
+              <p>Update the requested information and resubmit this project for approval.</p>
+              {(selected.revisionComments ?? []).map((comment) => (
+                <blockquote key={comment}>{comment}</blockquote>
+              ))}
+              {approval?.comment && <blockquote>{approval.comment}</blockquote>}
+            </div>
+            {isHoo && onResubmit && (
+              <button className="button button-primary" onClick={onResubmit}>
+                <CheckCircle2 size={15} /> Resubmit for approval
               </button>
-            ) : !isCeo ? (
-              <button
-                className="button button-primary"
-                onClick={onEdit}
-              >
-                Edit project
-              </button>
-            ) : null}
+            )}
           </div>
         )}
-      </div>
+
+        {isCeo && approval?.status === "Pending approval" ? (
+          <CeoApproval project={selected} approval={approval} onSubmit={onApprovalSubmit} />
+        ) : (
+          <div className="project-detail-grid">
+            <section className="project-detail-card project-detail-wide">
+              <div className="project-detail-card-heading">
+                <div>
+                  <span className="eyebrow">PROJECT OVERVIEW</span>
+                  <h2>Project information</h2>
+                </div>
+                <CalendarDays size={18} />
+              </div>
+              <div className="project-info-grid">
+                <InfoCard label="Project ID" value={selected.id} />
+                <InfoCard label="Project title" value={selected.name} />
+                <InfoCard label="Client" value={selected.client} />
+                <InfoCard label="Category" value={selected.category ?? selected.department} />
+                <InfoCard label="Production manager" value={selected.owner} />
+                <InfoCard label="Production dates" value={`${formatDate(selected.start)} - ${formatDate(selected.end)}`} />
+                <InfoCard label="Approval status" value={<span className={`status-pill project-approval-${projectApproval.toLowerCase().replaceAll(" ", "-")}`}>{projectApproval}</span>} />
+                <InfoCard label="Project progress" value={<span className={`status-pill ${progress.toLowerCase().replaceAll(" ", "-")}`}>{progress}</span>} />
+              </div>
+              <div className="project-description">
+                <span>Description</span>
+                <p>{selected.description ?? "No project description has been added."}</p>
+              </div>
+            </section>
+
+            <section className="project-detail-card">
+              <div className="project-detail-card-heading">
+                <div>
+                  <span className="eyebrow">RESOURCES & SCHEDULE</span>
+                  <h2>Delivery plan</h2>
+                </div>
+                <Users size={18} />
+              </div>
+              <div className="project-detail-list">
+                <InfoCard label="Selected equipment" value={(selected.selectedEquipment ?? []).join(", ")} />
+                <InfoCard label="Assigned staff" value={(selected.assignedEmployees ?? []).join(", ") || selected.owner} />
+                <InfoCard label="Services" value={(selected.services ?? []).join(", ")} />
+                <InfoCard label="Booking dates" value={`${formatDate(selected.start)} - ${formatDate(selected.end)}`} />
+                <InfoCard label="Resource costs" value={money(totalCost)} />
+              </div>
+            </section>
+
+            <section className="project-detail-card">
+              <div className="project-detail-card-heading">
+                <div>
+                  <span className="eyebrow">FINANCIAL INFORMATION</span>
+                  <h2>Project value</h2>
+                </div>
+                <ReceiptText size={18} />
+              </div>
+              <div className="project-detail-list">
+                <InfoCard label="Total cost" value={money(totalCost)} />
+                <InfoCard label="Selling amount" value={money(sellingAmount)} />
+                <InfoCard label="Estimated profit" value={money(profit)} />
+                <InfoCard label="Discount" value={money(discount)} />
+                <InfoCard label="Tax" value={money(tax)} />
+                <InfoCard label="Payment terms" value={selected.paymentTerms ?? "As agreed in quotation"} />
+              </div>
+            </section>
+          </div>
+        )}
+
+        <div className="project-document-summary">
+          <span><FileText size={14} /> {quotation ? `${quotation.id} · ${money(quotation.amount)}` : "No quotation linked"}</span>
+          <span><ReceiptText size={14} /> {invoice ? `${invoice.id} · ${money(invoice.amount)}` : "No invoice linked"}</span>
+        </div>
+      </section>
     </div>
   );
 }
