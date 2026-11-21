@@ -25125,6 +25125,11 @@ button {
   background: #ddd8ff;
   transform: scale(.92);
 }
+.rate-document-camera-switch {
+  background: rgba(255, 255, 255, .92);
+  border: 0;
+  justify-self: end;
+}
 .rate-document-page-image {
   height: 100%;
   position: relative;

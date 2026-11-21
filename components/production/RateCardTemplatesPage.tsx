@@ -180,16 +180,20 @@ function loadOpenCv() {
   if (window.cv?.Mat) return Promise.resolve();
   return new Promise<void>((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>(
-      'script[data-cmcs-opencv]',
+      "script[data-cmcs-opencv]",
     );
     if (existing) {
-      existing.addEventListener("load", () => {
-        if (window.cv?.onRuntimeInitialized) {
-          window.cv.onRuntimeInitialized = () => resolve();
-        } else if (window.cv?.Mat) {
-          resolve();
-        }
-      }, { once: true });
+      existing.addEventListener(
+        "load",
+        () => {
+          if (window.cv?.onRuntimeInitialized) {
+            window.cv.onRuntimeInitialized = () => resolve();
+          } else if (window.cv?.Mat) {
+            resolve();
+          }
+        },
+        { once: true },
+      );
       existing.addEventListener(
         "error",
         () => reject(new Error("OpenCV.js could not be loaded.")),
@@ -214,14 +218,12 @@ function loadOpenCv() {
 }
 
 function sortCorners(points: Point[]) {
-  const bySum = [...points].sort((a, b) => (a.x + a.y) - (b.x + b.y));
-  const byDiff = [...points].sort((a, b) => (a.x - a.y) - (b.x - b.y));
-  return [
-    bySum[0],
-    byDiff[0],
-    bySum[3],
-    byDiff[3],
-  ].map((point) => ({ x: Math.round(point.x), y: Math.round(point.y) }));
+  const bySum = [...points].sort((a, b) => a.x + a.y - (b.x + b.y));
+  const byDiff = [...points].sort((a, b) => a.x - a.y - (b.x - b.y));
+  return [bySum[0], byDiff[0], bySum[3], byDiff[3]].map((point) => ({
+    x: Math.round(point.x),
+    y: Math.round(point.y),
+  }));
 }
 
 async function detectDocumentCorners(dataUrl: string): Promise<Point[] | null> {
@@ -324,18 +326,32 @@ async function correctedPageDataUrl(page: ScanPage): Promise<string> {
         sourceCanvas.getContext("2d")?.drawImage(image, 0, 0);
         source = cv.imread(sourceCanvas);
         destination = new cv.Mat();
-        const normalizedCorners = sortCorners(page.corners.map((point) => ({
-          x: Math.max(0, Math.min(1000, point.x)),
-          y: Math.max(0, Math.min(1000, point.y)),
-        })));
+        const normalizedCorners = sortCorners(
+          page.corners.map((point) => ({
+            x: Math.max(0, Math.min(1000, point.x)),
+            y: Math.max(0, Math.min(1000, point.y)),
+          })),
+        );
         const pixels = normalizedCorners.map((point) => ({
           x: (point.x / 1000) * image.width,
           y: (point.y / 1000) * image.height,
         }));
-        const topWidth = Math.hypot(pixels[1].x - pixels[0].x, pixels[1].y - pixels[0].y);
-        const bottomWidth = Math.hypot(pixels[2].x - pixels[3].x, pixels[2].y - pixels[3].y);
-        const leftHeight = Math.hypot(pixels[3].x - pixels[0].x, pixels[3].y - pixels[0].y);
-        const rightHeight = Math.hypot(pixels[2].x - pixels[1].x, pixels[2].y - pixels[1].y);
+        const topWidth = Math.hypot(
+          pixels[1].x - pixels[0].x,
+          pixels[1].y - pixels[0].y,
+        );
+        const bottomWidth = Math.hypot(
+          pixels[2].x - pixels[3].x,
+          pixels[2].y - pixels[3].y,
+        );
+        const leftHeight = Math.hypot(
+          pixels[3].x - pixels[0].x,
+          pixels[3].y - pixels[0].y,
+        );
+        const rightHeight = Math.hypot(
+          pixels[2].x - pixels[1].x,
+          pixels[2].y - pixels[1].y,
+        );
         outputWidth = Math.round(Math.max(topWidth, bottomWidth));
         outputHeight = Math.round(Math.max(leftHeight, rightHeight));
         outputWidth = Math.max(80, Math.min(outputWidth, 2400));
@@ -346,12 +362,16 @@ async function correctedPageDataUrl(page: ScanPage): Promise<string> {
           cv.CV_32FC2,
           pixels.flatMap((point) => [point.x, point.y]),
         );
-        destinationPoints = cv.matFromArray(
-          4,
-          1,
-          cv.CV_32FC2,
-          [0, 0, outputWidth - 1, 0, outputWidth - 1, outputHeight - 1, 0, outputHeight - 1],
-        );
+        destinationPoints = cv.matFromArray(4, 1, cv.CV_32FC2, [
+          0,
+          0,
+          outputWidth - 1,
+          0,
+          outputWidth - 1,
+          outputHeight - 1,
+          0,
+          outputHeight - 1,
+        ]);
         matrix = cv.getPerspectiveTransform(sourcePoints, destinationPoints);
         cv.warpPerspective(
           source,
@@ -364,15 +384,23 @@ async function correctedPageDataUrl(page: ScanPage): Promise<string> {
         cv.imshow(canvas, destination);
         if (page.rotation % 360 !== 0) {
           const rotatedCanvas = document.createElement("canvas");
-          const quarterTurns = ((page.rotation / 90) % 4 + 4) % 4;
+          const quarterTurns = (((page.rotation / 90) % 4) + 4) % 4;
           const rotated = quarterTurns % 2 === 1;
           rotatedCanvas.width = rotated ? canvas.height : canvas.width;
           rotatedCanvas.height = rotated ? canvas.width : canvas.height;
           const rotatedContext = rotatedCanvas.getContext("2d");
-          if (!rotatedContext) throw new Error("The cropped image could not be rotated.");
-          rotatedContext.translate(rotatedCanvas.width / 2, rotatedCanvas.height / 2);
+          if (!rotatedContext)
+            throw new Error("The cropped image could not be rotated.");
+          rotatedContext.translate(
+            rotatedCanvas.width / 2,
+            rotatedCanvas.height / 2,
+          );
           rotatedContext.rotate((quarterTurns * Math.PI) / 2);
-          rotatedContext.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+          rotatedContext.drawImage(
+            canvas,
+            -canvas.width / 2,
+            -canvas.height / 2,
+          );
           return await finishEnhancement(rotatedCanvas, page);
         }
         return await finishEnhancement(canvas, { ...page, rotation: 0 });
@@ -386,7 +414,7 @@ async function correctedPageDataUrl(page: ScanPage): Promise<string> {
     }
   }
 
-  const quarterTurns = ((page.rotation / 90) % 4 + 4) % 4;
+  const quarterTurns = (((page.rotation / 90) % 4) + 4) % 4;
   const rotated = quarterTurns % 2 === 1;
   canvas.width = rotated ? image.height : image.width;
   canvas.height = rotated ? image.width : image.height;
@@ -401,10 +429,15 @@ async function correctedPageDataUrl(page: ScanPage): Promise<string> {
 async function finishEnhancement(canvas: HTMLCanvasElement, page: ScanPage) {
   const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context) return canvas.toDataURL("image/jpeg", 0.92);
-  if (page.filter !== "Original" || page.brightness !== 0 || page.contrast !== 100) {
+  if (
+    page.filter !== "Original" ||
+    page.brightness !== 0 ||
+    page.contrast !== 100
+  ) {
     const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
     const data = pixels.data;
-    const contrast = (259 * (page.contrast + 255)) / (255 * (259 - page.contrast));
+    const contrast =
+      (259 * (page.contrast + 255)) / (255 * (259 - page.contrast));
     for (let index = 0; index < data.length; index += 4) {
       let red = data[index];
       let green = data[index + 1];
@@ -418,7 +451,10 @@ async function finishEnhancement(canvas: HTMLCanvasElement, page: ScanPage) {
           red = green = blue = gray;
         }
       }
-      if (page.filter === "Color Enhancement" || page.filter === "Auto Enhance") {
+      if (
+        page.filter === "Color Enhancement" ||
+        page.filter === "Auto Enhance"
+      ) {
         const average = (red + green + blue) / 3;
         red = average + (red - average) * 1.12;
         green = average + (green - average) * 1.12;
@@ -426,8 +462,14 @@ async function finishEnhancement(canvas: HTMLCanvasElement, page: ScanPage) {
       }
       const adjustedContrast = contrast * (red - 128) + 128 + page.brightness;
       data[index] = Math.max(0, Math.min(255, adjustedContrast));
-      data[index + 1] = Math.max(0, Math.min(255, contrast * (green - 128) + 128 + page.brightness));
-      data[index + 2] = Math.max(0, Math.min(255, contrast * (blue - 128) + 128 + page.brightness));
+      data[index + 1] = Math.max(
+        0,
+        Math.min(255, contrast * (green - 128) + 128 + page.brightness),
+      );
+      data[index + 2] = Math.max(
+        0,
+        Math.min(255, contrast * (blue - 128) + 128 + page.brightness),
+      );
     }
     context.putImageData(pixels, 0, 0);
   }
@@ -436,7 +478,7 @@ async function finishEnhancement(canvas: HTMLCanvasElement, page: ScanPage) {
 
 async function pageAsJpeg(page: ScanPage) {
   const image = await loadImage(page.dataUrl);
-  const quarterTurns = ((page.rotation / 90) % 4 + 4) % 4;
+  const quarterTurns = (((page.rotation / 90) % 4) + 4) % 4;
   const rotated = quarterTurns % 2 === 1;
   const canvas = document.createElement("canvas");
   canvas.width = rotated ? image.height : image.width;
@@ -449,7 +491,10 @@ async function pageAsJpeg(page: ScanPage) {
   const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
   return {
     bytes: dataUrlToBytes(dataUrl),
-    dimensions: { width: canvas.width, height: canvas.height } as ImageDimensions,
+    dimensions: {
+      width: canvas.width,
+      height: canvas.height,
+    } as ImageDimensions,
   };
 }
 
@@ -458,7 +503,9 @@ function textBytes(value: string) {
 }
 
 function joinBytes(chunks: Uint8Array[]) {
-  const result = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
+  const result = new Uint8Array(
+    chunks.reduce((total, chunk) => total + chunk.length, 0),
+  );
   let offset = 0;
   chunks.forEach((chunk) => {
     result.set(chunk, offset);
@@ -470,7 +517,9 @@ function joinBytes(chunks: Uint8Array[]) {
 async function buildImagePdf(pages: ScanPage[]) {
   if (pages.some((page) => page.type === "application/pdf")) {
     if (pages.length !== 1) {
-      throw new Error("PDF uploads cannot be combined with additional pages in the browser.");
+      throw new Error(
+        "PDF uploads cannot be combined with additional pages in the browser.",
+      );
     }
     return dataUrlToBlob(pages[0].dataUrl);
   }
@@ -479,7 +528,9 @@ async function buildImagePdf(pages: ScanPage[]) {
   const pageWidth = 595.28;
   const pageHeight = 841.89;
   const chunks: Uint8Array[] = [
-    new Uint8Array([37, 80, 68, 70, 45, 49, 46, 51, 10, 37, 255, 255, 255, 255, 10]),
+    new Uint8Array([
+      37, 80, 68, 70, 45, 49, 46, 51, 10, 37, 255, 255, 255, 255, 10,
+    ]),
   ];
   const offsets: number[] = [0];
   let offset = chunks[0].length;
@@ -505,7 +556,10 @@ async function buildImagePdf(pages: ScanPage[]) {
 
   jpegPages.forEach(({ bytes, dimensions }, index) => {
     const numbers = objectNumbers(index);
-    const scale = Math.min(pageWidth / dimensions.width, pageHeight / dimensions.height);
+    const scale = Math.min(
+      pageWidth / dimensions.width,
+      pageHeight / dimensions.height,
+    );
     const width = Math.max(1, dimensions.width * scale);
     const height = Math.max(1, dimensions.height * scale);
     addTextObject(
@@ -610,10 +664,11 @@ export function RateCardTemplatesPage({
   const [selectedResources, setSelectedResources] = useState<string[]>([]);
   const [expandedFunctions, setExpandedFunctions] = useState<string[]>([]);
   const [rates, setRates] = useState<RateMap>(initialRates);
-  const [scannedDocuments, setScannedDocuments] = useState<ScannedDocument[]>([]);
-  const [scannerTemplate, setScannerTemplate] = useState<RateCardTemplate | null>(
-    null,
+  const [scannedDocuments, setScannedDocuments] = useState<ScannedDocument[]>(
+    [],
   );
+  const [scannerTemplate, setScannerTemplate] =
+    useState<RateCardTemplate | null>(null);
   const [scannerName, setScannerName] = useState("");
   const [scannerPages, setScannerPages] = useState<ScanPage[]>([]);
   const [scannerReplacingId, setScannerReplacingId] = useState<string | null>(
@@ -622,11 +677,14 @@ export function RateCardTemplatesPage({
   const [scannerError, setScannerError] = useState("");
   const [scannerSaving, setScannerSaving] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraFacingMode, setCameraFacingMode] = useState<"environment" | "user">("environment");
+  const [cameraSwitchAvailable, setCameraSwitchAvailable] = useState(false);
   const [adjustingPageId, setAdjustingPageId] = useState<string | null>(null);
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
   const [previewPageId, setPreviewPageId] = useState<string | null>(null);
   const [replacingPageId, setReplacingPageId] = useState<string | null>(null);
-  const [selectedFilter, setSelectedFilter] = useState<ScanFilter>("Auto Enhance");
+  const [selectedFilter, setSelectedFilter] =
+    useState<ScanFilter>("Auto Enhance");
   const [processingPageId, setProcessingPageId] = useState<string | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -679,6 +737,7 @@ export function RateCardTemplatesPage({
     setScannerError("");
     setScannerSaving(false);
     setCameraOpen(false);
+    setCameraSwitchAvailable(false);
     setAdjustingPageId(null);
     setEditingPageId(null);
     setPreviewPageId(null);
@@ -688,44 +747,109 @@ export function RateCardTemplatesPage({
   function stopCamera() {
     cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
     cameraStreamRef.current = null;
+    if (cameraVideoRef.current) {
+      cameraVideoRef.current.srcObject = null;
+    }
   }
 
-  async function openLiveCamera() {
+  async function openLiveCamera(facingMode: "environment" | "user" = cameraFacingMode) {
     setScannerError("");
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setScannerError("Live camera preview is not supported in this browser.");
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      setCameraOpen(false);
+      setScannerError(
+        "Camera access requires HTTPS. Open this app through https://192.168.7.125:3000 or https://localhost:3000.",
+      );
       return;
     }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        },
-        audio: false,
-      });
-      cameraStreamRef.current = stream;
-      setCameraOpen(true);
-      window.setTimeout(() => {
-        if (cameraVideoRef.current) {
-          cameraVideoRef.current.srcObject = stream;
-          void cameraVideoRef.current.play();
-        }
-      }, 50);
-    } catch (error) {
+    if (!navigator.mediaDevices?.getUserMedia) {
       setScannerError(
-        error instanceof DOMException
-          ? "Camera permission was denied or no camera is available."
-          : "The camera could not be opened.",
+        "Live camera preview is not supported here. Use HTTPS or a current Chrome browser.",
       );
+      return;
+    }
+
+    stopCamera();
+    try {
+      setCameraFacingMode(facingMode);
+      setCameraOpen(true);
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+          audio: false,
+        });
+      } catch (error) {
+        if (
+          error instanceof DOMException &&
+          ["OverconstrainedError", "NotFoundError"].includes(error.name)
+        ) {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        } else {
+          throw error;
+        }
+      }
+
+      cameraStreamRef.current = stream;
+      const attachStream = () => {
+        if (!cameraVideoRef.current) return;
+        cameraVideoRef.current.srcObject = stream;
+        void cameraVideoRef.current.play().catch(() => {
+          setScannerError("The camera preview could not start. Tap the screen and try again.");
+        });
+      };
+      window.setTimeout(attachStream, 50);
+      window.setTimeout(attachStream, 250);
+
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        setCameraSwitchAvailable(
+          devices.filter((device) => device.kind === "videoinput").length > 1,
+        );
+      } catch {
+        setCameraSwitchAvailable(false);
+      }
+    } catch (error) {
+      setCameraOpen(false);
+      if (error instanceof DOMException) {
+        switch (error.name) {
+          case "NotAllowedError":
+          case "PermissionDeniedError":
+            setScannerError(
+              "Camera permission was denied. Allow camera access in Chrome site settings, then try again.",
+            );
+            break;
+          case "NotFoundError":
+            setScannerError("No camera was found on this device.");
+            break;
+          case "NotReadableError":
+            setScannerError("The camera is busy or unavailable. Close other apps using it and try again.");
+            break;
+          case "AbortError":
+            setScannerError("Camera access was interrupted. Please try again.");
+            break;
+          default:
+            setScannerError("The camera could not be opened. Check permissions and try again.");
+        }
+      } else {
+        setScannerError("The camera could not be opened.");
+      }
     }
   }
 
   function captureCameraPage() {
     const video = cameraVideoRef.current;
     if (!video || video.readyState < 2) {
-      setScannerError("The camera is still starting. Please wait and try again.");
+      setScannerError(
+        "The camera is still starting. Please wait and try again.",
+      );
       return;
     }
     const canvas = document.createElement("canvas");
@@ -781,8 +905,13 @@ export function RateCardTemplatesPage({
       if (unsupported) {
         throw new Error("Only PDF, JPG and PNG documents are supported.");
       }
-      if (files.some((file) => file.type === "application/pdf") && files.length > 1) {
-        throw new Error("Upload a PDF by itself, or upload image pages together.");
+      if (
+        files.some((file) => file.type === "application/pdf") &&
+        files.length > 1
+      ) {
+        throw new Error(
+          "Upload a PDF by itself, or upload image pages together.",
+        );
       }
       const pages = await Promise.all(
         files.map(async (file) => ({
@@ -801,7 +930,9 @@ export function RateCardTemplatesPage({
       });
     } catch (error) {
       setScannerError(
-        error instanceof Error ? error.message : "The document could not be added.",
+        error instanceof Error
+          ? error.message
+          : "The document could not be added.",
       );
     }
   }
@@ -831,7 +962,11 @@ export function RateCardTemplatesPage({
       setProcessingPageId(pageId);
       await processCapturedPage(replacement);
     } catch (error) {
-      setScannerError(error instanceof Error ? error.message : "The page could not be replaced.");
+      setScannerError(
+        error instanceof Error
+          ? error.message
+          : "The page could not be replaced.",
+      );
     } finally {
       setReplacingPageId(null);
     }
@@ -884,7 +1019,9 @@ export function RateCardTemplatesPage({
       );
     } catch (error) {
       setScannerError(
-        error instanceof Error ? error.message : "This page could not be processed.",
+        error instanceof Error
+          ? error.message
+          : "This page could not be processed.",
       );
     } finally {
       setProcessingPageId(null);
@@ -929,8 +1066,14 @@ export function RateCardTemplatesPage({
     const svg = event.currentTarget.ownerSVGElement;
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
-    const x = Math.max(0, Math.min(1000, ((event.clientX - rect.left) / rect.width) * 1000));
-    const y = Math.max(0, Math.min(1000, ((event.clientY - rect.top) / rect.height) * 1000));
+    const x = Math.max(
+      0,
+      Math.min(1000, ((event.clientX - rect.left) / rect.width) * 1000),
+    );
+    const y = Math.max(
+      0,
+      Math.min(1000, ((event.clientY - rect.top) / rect.height) * 1000),
+    );
     const page = scannerPages.find((item) => item.id === pageId);
     if (!page) return;
     const corners = [...(page.corners ?? defaultScannerCorners())];
@@ -961,7 +1104,9 @@ export function RateCardTemplatesPage({
     try {
       if (scannerPages.some((page) => page.type === "application/pdf")) {
         if (scannerPages.length !== 1) {
-          throw new Error("PDF uploads cannot be combined with additional pages.");
+          throw new Error(
+            "PDF uploads cannot be combined with additional pages.",
+          );
         }
         const pdfDataUrl = scannerPages[0].dataUrl;
         const existing = scannedDocuments.find(
@@ -971,7 +1116,8 @@ export function RateCardTemplatesPage({
           id: existing?.id ?? `DOC-${Date.now()}`,
           templateId: scannerTemplate.id,
           name: trimmedName,
-          createdAt: existing?.createdAt ?? new Date().toISOString().slice(0, 10),
+          createdAt:
+            existing?.createdAt ?? new Date().toISOString().slice(0, 10),
           pages: scannerPages,
           pdfDataUrl,
         };
@@ -982,7 +1128,11 @@ export function RateCardTemplatesPage({
               )
             : [...current, savedDocument],
         );
-        onNotify(existing ? "Scanned document replaced." : "Scanned document archived.");
+        onNotify(
+          existing
+            ? "Scanned document replaced."
+            : "Scanned document archived.",
+        );
         closeScanner();
         return;
       }
@@ -995,7 +1145,10 @@ export function RateCardTemplatesPage({
         const image = await loadImage(processed);
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
-        const scale = Math.min(pageWidth / image.width, pageHeight / image.height);
+        const scale = Math.min(
+          pageWidth / image.width,
+          pageHeight / image.height,
+        );
         const width = image.width * scale;
         const height = image.height * scale;
         pdf.addImage(
@@ -1028,11 +1181,15 @@ export function RateCardTemplatesPage({
             )
           : [...current, savedDocument],
       );
-      onNotify(existing ? "Scanned document replaced." : "Scanned document archived.");
+      onNotify(
+        existing ? "Scanned document replaced." : "Scanned document archived.",
+      );
       closeScanner();
     } catch (error) {
       setScannerError(
-        error instanceof Error ? error.message : "The document could not be saved.",
+        error instanceof Error
+          ? error.message
+          : "The document could not be saved.",
       );
       setScannerSaving(false);
     }
@@ -1441,32 +1598,67 @@ export function RateCardTemplatesPage({
       <section className="page-section rate-template-page">
         <PageHeader
           eyebrow="PRODUCTION / RATE CARD TEMPLATES / DOCUMENT ARCHIVE"
-          title={scannerReplacingId ? "Replace archived document" : "Scan document"}
+          title={
+            scannerReplacingId ? "Replace archived document" : "Scan document"
+          }
           copy={`Archive supporting documents under ${scannerTemplate.name}.`}
         />
         {previewPage && (
-          <div className="rate-document-modal-backdrop" role="dialog" aria-modal="true" aria-label="Preview scanned page">
+          <div
+            className="rate-document-modal-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Preview scanned page"
+          >
             <div className="rate-document-preview-modal">
               <div className="rate-document-modal-header">
-                <div><span className="eyebrow">PAGE PREVIEW</span><h2>Scanned image</h2></div>
-                <button type="button" className="icon-button" aria-label="Close preview" onClick={() => setPreviewPageId(null)}><X size={18} /></button>
+                <div>
+                  <span className="eyebrow">PAGE PREVIEW</span>
+                  <h2>Scanned image</h2>
+                </div>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Close preview"
+                  onClick={() => setPreviewPageId(null)}
+                >
+                  <X size={18} />
+                </button>
               </div>
               <div className="rate-document-preview-stage">
                 {previewPage.type === "application/pdf" ? (
                   <iframe title="Document preview" src={previewPage.dataUrl} />
                 ) : (
-                  <img src={previewPage.processedDataUrl ?? previewPage.dataUrl} alt="Selected scanned page preview" />
+                  <img
+                    src={previewPage.processedDataUrl ?? previewPage.dataUrl}
+                    alt="Selected scanned page preview"
+                  />
                 )}
               </div>
             </div>
           </div>
         )}
         {editingPage && (
-          <div className="rate-document-modal-backdrop" role="dialog" aria-modal="true" aria-label="Edit scanned page">
+          <div
+            className="rate-document-modal-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Edit scanned page"
+          >
             <div className="rate-document-editor-modal">
               <div className="rate-document-modal-header">
-                <div><span className="eyebrow">INDIVIDUAL PAGE EDITOR</span><h2>Edit scanned page</h2></div>
-                <button type="button" className="icon-button" aria-label="Close editor" onClick={() => setEditingPageId(null)}><X size={18} /></button>
+                <div>
+                  <span className="eyebrow">INDIVIDUAL PAGE EDITOR</span>
+                  <h2>Edit scanned page</h2>
+                </div>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Close editor"
+                  onClick={() => setEditingPageId(null)}
+                >
+                  <X size={18} />
+                </button>
               </div>
               <div className="rate-document-editor-body">
                 <div className="rate-document-editor-stage">
@@ -1480,27 +1672,45 @@ export function RateCardTemplatesPage({
                     preserveAspectRatio="none"
                   >
                     <polygon
-                      points={(editingPage.corners ?? defaultScannerCorners()).map((point) => `${point.x},${point.y}`).join(" ")}
+                      points={(editingPage.corners ?? defaultScannerCorners())
+                        .map((point) => `${point.x},${point.y}`)
+                        .join(" ")}
                     />
-                    {(editingPage.corners ?? defaultScannerCorners()).map((point, cornerIndex) => (
-                      <circle
-                        key={cornerIndex}
-                        cx={point.x}
-                        cy={point.y}
-                        r="18"
-                        onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)}
-                        onPointerMove={(event) => {
-                          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                            updateCorner(editingPage.id, cornerIndex, event);
+                    {(editingPage.corners ?? defaultScannerCorners()).map(
+                      (point, cornerIndex) => (
+                        <circle
+                          key={cornerIndex}
+                          cx={point.x}
+                          cy={point.y}
+                          r="18"
+                          onPointerDown={(event) =>
+                            event.currentTarget.setPointerCapture(
+                              event.pointerId,
+                            )
                           }
-                        }}
-                        onPointerUp={(event) => {
-                          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                            event.currentTarget.releasePointerCapture(event.pointerId);
-                          }
-                        }}
-                      />
-                    ))}
+                          onPointerMove={(event) => {
+                            if (
+                              event.currentTarget.hasPointerCapture(
+                                event.pointerId,
+                              )
+                            ) {
+                              updateCorner(editingPage.id, cornerIndex, event);
+                            }
+                          }}
+                          onPointerUp={(event) => {
+                            if (
+                              event.currentTarget.hasPointerCapture(
+                                event.pointerId,
+                              )
+                            ) {
+                              event.currentTarget.releasePointerCapture(
+                                event.pointerId,
+                              );
+                            }
+                          }}
+                        />
+                      ),
+                    )}
                   </svg>
                 </div>
                 <aside className="rate-document-editor-tools">
@@ -1510,7 +1720,9 @@ export function RateCardTemplatesPage({
                       className="button button-secondary"
                       onClick={async () => {
                         setProcessingPageId(editingPage.id);
-                        const corners = await detectDocumentCorners(editingPage.dataUrl);
+                        const corners = await detectDocumentCorners(
+                          editingPage.dataUrl,
+                        );
                         await updateProcessedPage(editingPage.id, {
                           corners: corners ?? defaultScannerCorners(),
                         });
@@ -1522,27 +1734,37 @@ export function RateCardTemplatesPage({
                     <button
                       type="button"
                       className="button button-secondary"
-                      onClick={() => void updateProcessedPage(editingPage.id, { corners: defaultScannerCorners() })}
+                      onClick={() =>
+                        void updateProcessedPage(editingPage.id, {
+                          corners: defaultScannerCorners(),
+                        })
+                      }
                     >
                       <Maximize2 size={14} /> Manual Crop
                     </button>
                     <button
                       type="button"
                       className="button button-secondary"
-                      onClick={() => void updateProcessedPage(editingPage.id, {
-                        corners: undefined,
-                        rotation: 0,
-                        filter: "Original",
-                        brightness: 0,
-                        contrast: 100,
-                      })}
+                      onClick={() =>
+                        void updateProcessedPage(editingPage.id, {
+                          corners: undefined,
+                          rotation: 0,
+                          filter: "Original",
+                          brightness: 0,
+                          contrast: 100,
+                        })
+                      }
                     >
                       <X size={14} /> Reset
                     </button>
                     <button
                       type="button"
                       className="button button-secondary"
-                      onClick={() => void updateProcessedPage(editingPage.id, { rotation: (editingPage.rotation + 90) % 360 })}
+                      onClick={() =>
+                        void updateProcessedPage(editingPage.id, {
+                          rotation: (editingPage.rotation + 90) % 360,
+                        })
+                      }
                     >
                       <RotateCw size={14} /> Rotate
                     </button>
@@ -1550,12 +1772,23 @@ export function RateCardTemplatesPage({
                   <div>
                     <span className="eyebrow">IMAGE FILTER</span>
                     <div className="rate-document-filter-list">
-                      {(["Original", "Auto Enhance", "Grayscale", "Black & White"] as ScanFilter[]).map((filter) => (
+                      {(
+                        [
+                          "Original",
+                          "Auto Enhance",
+                          "Grayscale",
+                          "Black & White",
+                        ] as ScanFilter[]
+                      ).map((filter) => (
                         <button
                           type="button"
                           key={filter}
-                          className={editingPage.filter === filter ? "selected" : ""}
-                          onClick={() => void updateProcessedPage(editingPage.id, { filter })}
+                          className={
+                            editingPage.filter === filter ? "selected" : ""
+                          }
+                          onClick={() =>
+                            void updateProcessedPage(editingPage.id, { filter })
+                          }
                         >
                           {filter}
                         </button>
@@ -1563,31 +1796,61 @@ export function RateCardTemplatesPage({
                     </div>
                   </div>
                   <label className="rate-document-range">
-                    <span><b>Brightness</b><small>{editingPage.brightness}</small></span>
+                    <span>
+                      <b>Brightness</b>
+                      <small>{editingPage.brightness}</small>
+                    </span>
                     <input
                       type="range"
                       min="-100"
                       max="100"
                       value={editingPage.brightness}
-                      onChange={(event) => void updateProcessedPage(editingPage.id, { brightness: Number(event.target.value) })}
+                      onChange={(event) =>
+                        void updateProcessedPage(editingPage.id, {
+                          brightness: Number(event.target.value),
+                        })
+                      }
                     />
                   </label>
                   <label className="rate-document-range">
-                    <span><b>Contrast</b><small>{editingPage.contrast}%</small></span>
+                    <span>
+                      <b>Contrast</b>
+                      <small>{editingPage.contrast}%</small>
+                    </span>
                     <input
                       type="range"
                       min="0"
                       max="200"
                       value={editingPage.contrast}
-                      onChange={(event) => void updateProcessedPage(editingPage.id, { contrast: Number(event.target.value) })}
+                      onChange={(event) =>
+                        void updateProcessedPage(editingPage.id, {
+                          contrast: Number(event.target.value),
+                        })
+                      }
                     />
                   </label>
-                  {processingPageId === editingPage.id && <small className="rate-document-processing">Updating preview...</small>}
+                  {processingPageId === editingPage.id && (
+                    <small className="rate-document-processing">
+                      Updating preview...
+                    </small>
+                  )}
                 </aside>
               </div>
               <div className="rate-document-modal-footer">
-                <button type="button" className="button button-secondary" onClick={() => setEditingPageId(null)}>Cancel</button>
-                <button type="button" className="button button-primary" onClick={() => setEditingPageId(null)}><Save size={14} /> Save changes</button>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => setEditingPageId(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="button button-primary"
+                  onClick={() => setEditingPageId(null)}
+                >
+                  <Save size={14} /> Save changes
+                </button>
               </div>
             </div>
           </div>
@@ -1597,7 +1860,10 @@ export function RateCardTemplatesPage({
             {cameraOpen && (
               <section className="rate-document-camera panel">
                 <video ref={cameraVideoRef} playsInline muted />
-                <div className="rate-document-camera-guide" aria-hidden="true" />
+                <div
+                  className="rate-document-camera-guide"
+                  aria-hidden="true"
+                />
                 <div className="rate-document-camera-controls">
                   <button
                     type="button"
@@ -1605,6 +1871,7 @@ export function RateCardTemplatesPage({
                     onClick={() => {
                       stopCamera();
                       setCameraOpen(false);
+                      setCameraSwitchAvailable(false);
                     }}
                   >
                     <X size={15} /> Close
@@ -1617,15 +1884,37 @@ export function RateCardTemplatesPage({
                   >
                     <span />
                   </button>
-                  <span />
+                  {cameraSwitchAvailable ? (
+                    <button
+                      type="button"
+                      className="button rate-document-camera-switch"
+                      onClick={() =>
+                        void openLiveCamera(
+                          cameraFacingMode === "environment" ? "user" : "environment",
+                        )
+                      }
+                    >
+                      <RotateCw size={15} />
+                      {cameraFacingMode === "environment" ? "Front" : "Rear"}
+                    </button>
+                  ) : (
+                    <span />
+                  )}
                 </div>
               </section>
             )}
             <section className="panel rate-document-scanner-toolbar">
               <div>
                 <span className="eyebrow">DOCUMENT PAGES</span>
-                <h2>{scannerPages.length ? `${scannerPages.length} page${scannerPages.length === 1 ? "" : "s"} ready` : "Add your first page"}</h2>
-                <p>Use your camera on mobile or upload PDF, JPG and PNG files from your device.</p>
+                <h2>
+                  {scannerPages.length
+                    ? `${scannerPages.length} page${scannerPages.length === 1 ? "" : "s"} ready`
+                    : "Add your first page"}
+                </h2>
+                <p>
+                  Use your camera on mobile or upload PDF, JPG and PNG files
+                  from your device.
+                </p>
               </div>
               <div className="rate-document-scanner-actions">
                 <button
@@ -1671,7 +1960,10 @@ export function RateCardTemplatesPage({
                   accept="image/jpeg,image/png"
                   onChange={(event) => {
                     if (replacingPageId) {
-                      void replaceScannerPage(replacingPageId, event.target.files);
+                      void replaceScannerPage(
+                        replacingPageId,
+                        event.target.files,
+                      );
                     }
                     event.currentTarget.value = "";
                   }}
@@ -1689,7 +1981,10 @@ export function RateCardTemplatesPage({
                   <article className="rate-document-page" key={page.id}>
                     <div className="rate-document-page-preview">
                       {page.type === "application/pdf" ? (
-                        <iframe title={`Document page ${index + 1}`} src={page.dataUrl} />
+                        <iframe
+                          title={`Document page ${index + 1}`}
+                          src={page.dataUrl}
+                        />
                       ) : (
                         <div className="rate-document-page-image">
                           <img
@@ -1738,7 +2033,11 @@ export function RateCardTemplatesPage({
                             className="icon-button"
                             title="Rotate page"
                             aria-label={`Rotate page ${index + 1}`}
-                            onClick={() => void updateProcessedPage(page.id, { rotation: (page.rotation + 90) % 360 })}
+                            onClick={() =>
+                              void updateProcessedPage(page.id, {
+                                rotation: (page.rotation + 90) % 360,
+                              })
+                            }
                           >
                             <RotateCw size={15} />
                           </button>
@@ -1781,7 +2080,10 @@ export function RateCardTemplatesPage({
               <div className="panel rate-document-empty">
                 <ScanLine size={30} />
                 <h2>No pages added yet</h2>
-                <p>Capture a page with your camera or choose a document from your computer.</p>
+                <p>
+                  Capture a page with your camera or choose a document from your
+                  computer.
+                </p>
               </div>
             )}
           </div>
@@ -1802,7 +2104,11 @@ export function RateCardTemplatesPage({
               Images will be combined into one PDF when saved.
             </div>
             <div className="rate-template-summary-actions">
-              <button type="button" className="button button-secondary" onClick={closeScanner}>
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={closeScanner}
+              >
                 <X size={14} /> Cancel
               </button>
               <button
@@ -1811,7 +2117,8 @@ export function RateCardTemplatesPage({
                 onClick={() => void saveScannedDocument()}
                 disabled={scannerSaving}
               >
-                <Save size={14} /> {scannerSaving ? "Saving..." : "Save document"}
+                <Save size={14} />{" "}
+                {scannerSaving ? "Saving..." : "Save document"}
               </button>
             </div>
           </aside>
@@ -1908,31 +2215,72 @@ export function RateCardTemplatesPage({
               >
                 <ScanLine size={14} /> Scan document
               </button>
-              {scannedDocuments.filter((document) => document.templateId === template.id).length > 0 && (
+              {scannedDocuments.filter(
+                (document) => document.templateId === template.id,
+              ).length > 0 && (
                 <div className="rate-template-archive">
                   <div className="rate-template-archive-heading">
-                    <span><FileText size={13} /> Archived documents</span>
-                    <small>{scannedDocuments.filter((document) => document.templateId === template.id).length}</small>
+                    <span>
+                      <FileText size={13} /> Archived documents
+                    </span>
+                    <small>
+                      {
+                        scannedDocuments.filter(
+                          (document) => document.templateId === template.id,
+                        ).length
+                      }
+                    </small>
                   </div>
                   {scannedDocuments
                     .filter((document) => document.templateId === template.id)
                     .map((document) => (
-                      <div className="rate-template-archive-item" key={document.id}>
+                      <div
+                        className="rate-template-archive-item"
+                        key={document.id}
+                      >
                         <span>
                           <strong>{document.name}</strong>
-                          <small>{document.pages.length} page{document.pages.length === 1 ? "" : "s"} · {document.createdAt}</small>
+                          <small>
+                            {document.pages.length} page
+                            {document.pages.length === 1 ? "" : "s"} ·{" "}
+                            {document.createdAt}
+                          </small>
                         </span>
                         <div>
-                          <button type="button" className="icon-button" title="View document" aria-label={`View ${document.name}`} onClick={() => openSavedDocument(document)}>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            title="View document"
+                            aria-label={`View ${document.name}`}
+                            onClick={() => openSavedDocument(document)}
+                          >
                             <Eye size={14} />
                           </button>
-                          <button type="button" className="icon-button" title="Download document" aria-label={`Download ${document.name}`} onClick={() => openSavedDocument(document, true)}>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            title="Download document"
+                            aria-label={`Download ${document.name}`}
+                            onClick={() => openSavedDocument(document, true)}
+                          >
                             <Download size={14} />
                           </button>
-                          <button type="button" className="icon-button" title="Replace document" aria-label={`Replace ${document.name}`} onClick={() => openScanner(template, document)}>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            title="Replace document"
+                            aria-label={`Replace ${document.name}`}
+                            onClick={() => openScanner(template, document)}
+                          >
                             <ScanLine size={14} />
                           </button>
-                          <button type="button" className="icon-button danger-text" title="Delete document" aria-label={`Delete ${document.name}`} onClick={() => deleteSavedDocument(document.id)}>
+                          <button
+                            type="button"
+                            className="icon-button danger-text"
+                            title="Delete document"
+                            aria-label={`Delete ${document.name}`}
+                            onClick={() => deleteSavedDocument(document.id)}
+                          >
                             <Trash2 size={14} />
                           </button>
                         </div>
