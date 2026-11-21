@@ -25202,6 +25202,99 @@ button {
   padding: 0;
   width: 100%;
 }
+.rate-document-modal-backdrop {
+  align-items: center;
+  background: rgba(15, 23, 42, .68);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 18px;
+  position: fixed;
+  z-index: 1000;
+}
+.rate-document-editor-modal,
+.rate-document-preview-modal {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, .32);
+  max-height: calc(100vh - 36px);
+  max-width: 1180px;
+  overflow: hidden;
+  width: min(1180px, 100%);
+}
+.rate-document-preview-modal {
+  max-width: 900px;
+}
+.rate-document-modal-header,
+.rate-document-modal-footer {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 18px;
+}
+.rate-document-modal-header {
+  border-bottom: 1px solid #edf0f5;
+}
+.rate-document-modal-header h2 {
+  font-size: 16px;
+  margin: 3px 0 0;
+}
+.rate-document-modal-footer {
+  border-top: 1px solid #edf0f5;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.rate-document-editor-body {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  min-height: 0;
+  padding: 14px;
+}
+.rate-document-editor-stage,
+.rate-document-preview-stage {
+  align-items: center;
+  background: #eef1f6;
+  border-radius: 10px;
+  display: flex;
+  justify-content: center;
+  min-height: 420px;
+  overflow: hidden;
+  position: relative;
+}
+.rate-document-editor-stage img,
+.rate-document-preview-stage img {
+  height: 100%;
+  max-height: calc(100vh - 220px);
+  object-fit: contain;
+  width: 100%;
+}
+.rate-document-preview-stage iframe {
+  border: 0;
+  height: min(70vh, 720px);
+  width: 100%;
+}
+.rate-document-editor-tools {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+}
+.rate-document-editor-tools-row {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: 1fr 1fr;
+}
+.rate-document-editor-tools-row .button {
+  justify-content: center;
+  min-width: 0;
+  padding: 8px;
+}
+.rate-document-processing {
+  color: #6256d8;
+  text-align: center;
+}
 @media (max-width: 1050px) {
   .rate-document-scanner {
     grid-template-columns: minmax(0, 1fr) 280px;
@@ -25213,6 +25306,16 @@ button {
   }
   .rate-document-scanner-summary {
     position: static;
+  }
+  .rate-document-editor-body {
+    grid-template-columns: 1fr;
+  }
+  .rate-document-editor-stage,
+  .rate-document-preview-stage {
+    min-height: 340px;
+  }
+  .rate-document-editor-tools {
+    max-height: none;
   }
 }
 @media (max-width: 600px) {

@@ -47,6 +47,7 @@ type ScanPage = {
   dataUrl: string;
   processedDataUrl?: string;
   type: string;
+  captured?: boolean;
   rotation: number;
   corners?: Point[];
   filter: ScanFilter;
@@ -182,7 +183,13 @@ function loadOpenCv() {
       'script[data-cmcs-opencv]',
     );
     if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("load", () => {
+        if (window.cv?.onRuntimeInitialized) {
+          window.cv.onRuntimeInitialized = () => resolve();
+        } else if (window.cv?.Mat) {
+          resolve();
+        }
+      }, { once: true });
       existing.addEventListener(
         "error",
         () => reject(new Error("OpenCV.js could not be loaded.")),
@@ -207,19 +214,14 @@ function loadOpenCv() {
 }
 
 function sortCorners(points: Point[]) {
-  const center = points.reduce(
-    (result, point) => ({ x: result.x + point.x / points.length, y: result.y + point.y / points.length }),
-    { x: 0, y: 0 },
-  );
+  const bySum = [...points].sort((a, b) => (a.x + a.y) - (b.x + b.y));
+  const byDiff = [...points].sort((a, b) => (a.x - a.y) - (b.x - b.y));
   return [
-    points.reduce((a, b) => (a.x + a.y < b.x + b.y ? a : b)),
-    points.reduce((a, b) => (b.x - b.y < a.x - a.y ? b : a)),
-    points.reduce((a, b) => (a.x + a.y > b.x + b.y ? a : b)),
-    points.reduce((a, b) => (b.x - b.y > a.x - a.y ? b : a)),
-  ].map((point) => ({
-    x: Math.round(point.x),
-    y: Math.round(point.y),
-  }));
+    bySum[0],
+    byDiff[0],
+    bySum[3],
+    byDiff[3],
+  ].map((point) => ({ x: Math.round(point.x), y: Math.round(point.y) }));
 }
 
 async function detectDocumentCorners(dataUrl: string): Promise<Point[] | null> {
@@ -262,28 +264,30 @@ async function detectDocumentCorners(dataUrl: string): Promise<Point[] | null> {
     for (let index = 0; index < contours.size(); index += 1) {
       const contour = contours.get(index);
       const area = window.cv.contourArea(contour);
-      if (area < canvas.width * canvas.height * 0.08) {
+      if (area < canvas.width * canvas.height * 0.05) {
         contour.delete();
         continue;
       }
       const perimeter = window.cv.arcLength(contour, true);
-      const polygon = new window.cv.Mat();
-      window.cv.approxPolyDP(contour, polygon, 0.02 * perimeter, true);
-      if (polygon.rows === 4 && window.cv.isContourConvex(polygon)) {
-        const points: Point[] = [];
-        for (let pointIndex = 0; pointIndex < 4; pointIndex += 1) {
-          const point = polygon.intPtr(pointIndex, 0);
-          points.push({
-            x: Math.round((point[0] / canvas.width) * 1000),
-            y: Math.round((point[1] / canvas.height) * 1000),
-          });
+      for (const epsilon of [0.01, 0.02, 0.03, 0.04]) {
+        const polygon = new window.cv.Mat();
+        window.cv.approxPolyDP(contour, polygon, epsilon * perimeter, true);
+        if (polygon.rows === 4 && window.cv.isContourConvex(polygon)) {
+          const points: Point[] = [];
+          for (let pointIndex = 0; pointIndex < 4; pointIndex += 1) {
+            const point = polygon.intPtr(pointIndex, 0);
+            points.push({
+              x: Math.round((point[0] / canvas.width) * 1000),
+              y: Math.round((point[1] / canvas.height) * 1000),
+            });
+          }
+          if (area > bestArea) {
+            bestArea = area;
+            best = sortCorners(points);
+          }
         }
-        if (area > bestArea) {
-          bestArea = area;
-          best = sortCorners(points);
-        }
+        polygon.delete();
       }
-      polygon.delete();
       contour.delete();
     }
     return best;
@@ -311,6 +315,8 @@ async function correctedPageDataUrl(page: ScanPage): Promise<string> {
       let source: any = null;
       let destination: any = null;
       let matrix: any = null;
+      let sourcePoints: any = null;
+      let destinationPoints: any = null;
       try {
         const sourceCanvas = document.createElement("canvas");
         sourceCanvas.width = image.width;
@@ -318,8 +324,11 @@ async function correctedPageDataUrl(page: ScanPage): Promise<string> {
         sourceCanvas.getContext("2d")?.drawImage(image, 0, 0);
         source = cv.imread(sourceCanvas);
         destination = new cv.Mat();
-        const corners = page.corners;
-        const pixels = corners.map((point) => ({
+        const normalizedCorners = sortCorners(page.corners.map((point) => ({
+          x: Math.max(0, Math.min(1000, point.x)),
+          y: Math.max(0, Math.min(1000, point.y)),
+        })));
+        const pixels = normalizedCorners.map((point) => ({
           x: (point.x / 1000) * image.width,
           y: (point.y / 1000) * image.height,
         }));
@@ -331,13 +340,13 @@ async function correctedPageDataUrl(page: ScanPage): Promise<string> {
         outputHeight = Math.round(Math.max(leftHeight, rightHeight));
         outputWidth = Math.max(80, Math.min(outputWidth, 2400));
         outputHeight = Math.max(80, Math.min(outputHeight, 2400));
-        const sourcePoints = cv.matFromArray(
+        sourcePoints = cv.matFromArray(
           4,
           1,
           cv.CV_32FC2,
           pixels.flatMap((point) => [point.x, point.y]),
         );
-        const destinationPoints = cv.matFromArray(
+        destinationPoints = cv.matFromArray(
           4,
           1,
           cv.CV_32FC2,
@@ -353,13 +362,26 @@ async function correctedPageDataUrl(page: ScanPage): Promise<string> {
         canvas.width = outputWidth;
         canvas.height = outputHeight;
         cv.imshow(canvas, destination);
-        sourcePoints.delete();
-        destinationPoints.delete();
-        return await finishEnhancement(canvas, page);
+        if (page.rotation % 360 !== 0) {
+          const rotatedCanvas = document.createElement("canvas");
+          const quarterTurns = ((page.rotation / 90) % 4 + 4) % 4;
+          const rotated = quarterTurns % 2 === 1;
+          rotatedCanvas.width = rotated ? canvas.height : canvas.width;
+          rotatedCanvas.height = rotated ? canvas.width : canvas.height;
+          const rotatedContext = rotatedCanvas.getContext("2d");
+          if (!rotatedContext) throw new Error("The cropped image could not be rotated.");
+          rotatedContext.translate(rotatedCanvas.width / 2, rotatedCanvas.height / 2);
+          rotatedContext.rotate((quarterTurns * Math.PI) / 2);
+          rotatedContext.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+          return await finishEnhancement(rotatedCanvas, page);
+        }
+        return await finishEnhancement(canvas, { ...page, rotation: 0 });
       } finally {
         source?.delete();
         destination?.delete();
         matrix?.delete();
+        sourcePoints?.delete();
+        destinationPoints?.delete();
       }
     }
   }
@@ -601,10 +623,14 @@ export function RateCardTemplatesPage({
   const [scannerSaving, setScannerSaving] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [adjustingPageId, setAdjustingPageId] = useState<string | null>(null);
+  const [editingPageId, setEditingPageId] = useState<string | null>(null);
+  const [previewPageId, setPreviewPageId] = useState<string | null>(null);
+  const [replacingPageId, setReplacingPageId] = useState<string | null>(null);
   const [selectedFilter, setSelectedFilter] = useState<ScanFilter>("Auto Enhance");
   const [processingPageId, setProcessingPageId] = useState<string | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const defaultRates = useMemo(initialRates, []);
@@ -654,6 +680,9 @@ export function RateCardTemplatesPage({
     setScannerSaving(false);
     setCameraOpen(false);
     setAdjustingPageId(null);
+    setEditingPageId(null);
+    setPreviewPageId(null);
+    setReplacingPageId(null);
   }
 
   function stopCamera() {
@@ -715,6 +744,7 @@ export function RateCardTemplatesPage({
       id: `capture-${Date.now()}-${Math.random()}`,
       dataUrl,
       type: "image/jpeg",
+      captured: true,
       rotation: 0,
       filter: "Auto Enhance",
       brightness: 0,
@@ -735,6 +765,8 @@ export function RateCardTemplatesPage({
     setScannerPages(existing?.pages ?? []);
     setScannerReplacingId(existing?.id ?? null);
     setScannerError("");
+    setEditingPageId(null);
+    setPreviewPageId(null);
   }
 
   async function addScannerFiles(fileList: FileList | null) {
@@ -771,6 +803,37 @@ export function RateCardTemplatesPage({
       setScannerError(
         error instanceof Error ? error.message : "The document could not be added.",
       );
+    }
+  }
+
+  async function replaceScannerPage(pageId: string, fileList: FileList | null) {
+    const file = fileList?.[0];
+    if (!file) return;
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      setScannerError("Replacement pages must be JPG or PNG images.");
+      return;
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const replacement: ScanPage = {
+        id: pageId,
+        dataUrl,
+        type: file.type,
+        captured: false,
+        rotation: 0,
+        filter: "Original",
+        brightness: 0,
+        contrast: 100,
+      };
+      setScannerPages((current) =>
+        current.map((page) => (page.id === pageId ? replacement : page)),
+      );
+      setProcessingPageId(pageId);
+      await processCapturedPage(replacement);
+    } catch (error) {
+      setScannerError(error instanceof Error ? error.message : "The page could not be replaced.");
+    } finally {
+      setReplacingPageId(null);
     }
   }
 
@@ -868,14 +931,14 @@ export function RateCardTemplatesPage({
     const rect = svg.getBoundingClientRect();
     const x = Math.max(0, Math.min(1000, ((event.clientX - rect.left) / rect.width) * 1000));
     const y = Math.max(0, Math.min(1000, ((event.clientY - rect.top) / rect.height) * 1000));
+    const page = scannerPages.find((item) => item.id === pageId);
+    if (!page) return;
+    const corners = [...(page.corners ?? defaultScannerCorners())];
+    corners[cornerIndex] = { x: Math.round(x), y: Math.round(y) };
     setScannerPages((current) =>
-      current.map((page) => {
-        if (page.id !== pageId) return page;
-        const corners = [...(page.corners ?? defaultScannerCorners())];
-        corners[cornerIndex] = { x: Math.round(x), y: Math.round(y) };
-        return { ...page, corners };
-      }),
+      current.map((item) => (item.id === pageId ? { ...item, corners } : item)),
     );
+    void updateProcessedPage(pageId, { corners });
   }
 
   function defaultScannerCorners(): Point[] {
@@ -1372,6 +1435,8 @@ export function RateCardTemplatesPage({
   }
 
   if (scannerTemplate) {
+    const editingPage = scannerPages.find((page) => page.id === editingPageId);
+    const previewPage = scannerPages.find((page) => page.id === previewPageId);
     return (
       <section className="page-section rate-template-page">
         <PageHeader
@@ -1379,6 +1444,154 @@ export function RateCardTemplatesPage({
           title={scannerReplacingId ? "Replace archived document" : "Scan document"}
           copy={`Archive supporting documents under ${scannerTemplate.name}.`}
         />
+        {previewPage && (
+          <div className="rate-document-modal-backdrop" role="dialog" aria-modal="true" aria-label="Preview scanned page">
+            <div className="rate-document-preview-modal">
+              <div className="rate-document-modal-header">
+                <div><span className="eyebrow">PAGE PREVIEW</span><h2>Scanned image</h2></div>
+                <button type="button" className="icon-button" aria-label="Close preview" onClick={() => setPreviewPageId(null)}><X size={18} /></button>
+              </div>
+              <div className="rate-document-preview-stage">
+                {previewPage.type === "application/pdf" ? (
+                  <iframe title="Document preview" src={previewPage.dataUrl} />
+                ) : (
+                  <img src={previewPage.processedDataUrl ?? previewPage.dataUrl} alt="Selected scanned page preview" />
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        {editingPage && (
+          <div className="rate-document-modal-backdrop" role="dialog" aria-modal="true" aria-label="Edit scanned page">
+            <div className="rate-document-editor-modal">
+              <div className="rate-document-modal-header">
+                <div><span className="eyebrow">INDIVIDUAL PAGE EDITOR</span><h2>Edit scanned page</h2></div>
+                <button type="button" className="icon-button" aria-label="Close editor" onClick={() => setEditingPageId(null)}><X size={18} /></button>
+              </div>
+              <div className="rate-document-editor-body">
+                <div className="rate-document-editor-stage">
+                  <img
+                    src={editingPage.processedDataUrl ?? editingPage.dataUrl}
+                    alt="Page being edited"
+                  />
+                  <svg
+                    className="rate-document-corner-overlay"
+                    viewBox="0 0 1000 1000"
+                    preserveAspectRatio="none"
+                  >
+                    <polygon
+                      points={(editingPage.corners ?? defaultScannerCorners()).map((point) => `${point.x},${point.y}`).join(" ")}
+                    />
+                    {(editingPage.corners ?? defaultScannerCorners()).map((point, cornerIndex) => (
+                      <circle
+                        key={cornerIndex}
+                        cx={point.x}
+                        cy={point.y}
+                        r="18"
+                        onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)}
+                        onPointerMove={(event) => {
+                          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                            updateCorner(editingPage.id, cornerIndex, event);
+                          }
+                        }}
+                        onPointerUp={(event) => {
+                          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                            event.currentTarget.releasePointerCapture(event.pointerId);
+                          }
+                        }}
+                      />
+                    ))}
+                  </svg>
+                </div>
+                <aside className="rate-document-editor-tools">
+                  <div className="rate-document-editor-tools-row">
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      onClick={async () => {
+                        setProcessingPageId(editingPage.id);
+                        const corners = await detectDocumentCorners(editingPage.dataUrl);
+                        await updateProcessedPage(editingPage.id, {
+                          corners: corners ?? defaultScannerCorners(),
+                        });
+                        setProcessingPageId(null);
+                      }}
+                    >
+                      <ScanLine size={14} /> Auto Detect
+                    </button>
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      onClick={() => void updateProcessedPage(editingPage.id, { corners: defaultScannerCorners() })}
+                    >
+                      <Maximize2 size={14} /> Manual Crop
+                    </button>
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      onClick={() => void updateProcessedPage(editingPage.id, {
+                        corners: undefined,
+                        rotation: 0,
+                        filter: "Original",
+                        brightness: 0,
+                        contrast: 100,
+                      })}
+                    >
+                      <X size={14} /> Reset
+                    </button>
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      onClick={() => void updateProcessedPage(editingPage.id, { rotation: (editingPage.rotation + 90) % 360 })}
+                    >
+                      <RotateCw size={14} /> Rotate
+                    </button>
+                  </div>
+                  <div>
+                    <span className="eyebrow">IMAGE FILTER</span>
+                    <div className="rate-document-filter-list">
+                      {(["Original", "Auto Enhance", "Grayscale", "Black & White"] as ScanFilter[]).map((filter) => (
+                        <button
+                          type="button"
+                          key={filter}
+                          className={editingPage.filter === filter ? "selected" : ""}
+                          onClick={() => void updateProcessedPage(editingPage.id, { filter })}
+                        >
+                          {filter}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <label className="rate-document-range">
+                    <span><b>Brightness</b><small>{editingPage.brightness}</small></span>
+                    <input
+                      type="range"
+                      min="-100"
+                      max="100"
+                      value={editingPage.brightness}
+                      onChange={(event) => void updateProcessedPage(editingPage.id, { brightness: Number(event.target.value) })}
+                    />
+                  </label>
+                  <label className="rate-document-range">
+                    <span><b>Contrast</b><small>{editingPage.contrast}%</small></span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="200"
+                      value={editingPage.contrast}
+                      onChange={(event) => void updateProcessedPage(editingPage.id, { contrast: Number(event.target.value) })}
+                    />
+                  </label>
+                  {processingPageId === editingPage.id && <small className="rate-document-processing">Updating preview...</small>}
+                </aside>
+              </div>
+              <div className="rate-document-modal-footer">
+                <button type="button" className="button button-secondary" onClick={() => setEditingPageId(null)}>Cancel</button>
+                <button type="button" className="button button-primary" onClick={() => setEditingPageId(null)}><Save size={14} /> Save changes</button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="rate-document-scanner">
           <div className="rate-document-scanner-main">
             {cameraOpen && (
@@ -1451,6 +1664,18 @@ export function RateCardTemplatesPage({
                     event.currentTarget.value = "";
                   }}
                 />
+                <input
+                  ref={replaceInputRef}
+                  className="rate-document-hidden-input"
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  onChange={(event) => {
+                    if (replacingPageId) {
+                      void replaceScannerPage(replacingPageId, event.target.files);
+                    }
+                    event.currentTarget.value = "";
+                  }}
+                />
               </div>
             </section>
             {scannerError && (
@@ -1471,52 +1696,6 @@ export function RateCardTemplatesPage({
                             src={page.processedDataUrl ?? page.dataUrl}
                             alt={`Scanned document page ${index + 1}`}
                           />
-                          {adjustingPageId === page.id && (
-                            <svg
-                              className="rate-document-corner-overlay"
-                              viewBox="0 0 1000 1000"
-                              preserveAspectRatio="none"
-                              onPointerMove={(event) => {
-                                if ((event.buttons & 1) === 0) return;
-                                const svg = event.currentTarget;
-                                const rect = svg.getBoundingClientRect();
-                                const active = svg.querySelector<SVGCircleElement>("[data-active='true']");
-                                if (!active) return;
-                                const index = Number(active.dataset.corner);
-                                updateCorner(page.id, index, event as unknown as React.PointerEvent<SVGCircleElement>);
-                              }}
-                              onPointerUp={() => void updateProcessedPage(page.id, {})}
-                            >
-                              <polygon
-                                points={(page.corners ?? defaultScannerCorners())
-                                  .map((point) => `${point.x},${point.y}`)
-                                  .join(" ")}
-                              />
-                              {(page.corners ?? defaultScannerCorners()).map((point, cornerIndex) => (
-                                <circle
-                                  key={cornerIndex}
-                                  cx={point.x}
-                                  cy={point.y}
-                                  r="18"
-                                  data-corner={cornerIndex}
-                                  data-active="false"
-                                  onPointerDown={(event) => {
-                                    event.currentTarget.dataset.active = "true";
-                                    event.currentTarget.setPointerCapture(event.pointerId);
-                                  }}
-                                  onPointerMove={(event) => {
-                                    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-                                    updateCorner(page.id, cornerIndex, event);
-                                  }}
-                                  onPointerUp={(event) => {
-                                    event.currentTarget.dataset.active = "false";
-                                    event.currentTarget.releasePointerCapture(event.pointerId);
-                                    void updateProcessedPage(page.id, {});
-                                  }}
-                                />
-                              ))}
-                            </svg>
-                          )}
                         </div>
                       )}
                       <span>Page {index + 1}</span>
@@ -1527,11 +1706,32 @@ export function RateCardTemplatesPage({
                           <button
                             type="button"
                             className="icon-button"
-                            title="Adjust corners"
-                            aria-label={`Adjust corners on page ${index + 1}`}
-                            onClick={() => setAdjustingPageId(adjustingPageId === page.id ? null : page.id)}
+                            title="Edit page"
+                            aria-label={`Edit page ${index + 1}`}
+                            onClick={() => setEditingPageId(page.id)}
                           >
-                            <Maximize2 size={15} />
+                            <Edit3 size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            title="Preview page"
+                            aria-label={`Preview page ${index + 1}`}
+                            onClick={() => setPreviewPageId(page.id)}
+                          >
+                            <Eye size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            title="Replace page"
+                            aria-label={`Replace page ${index + 1}`}
+                            onClick={() => {
+                              setReplacingPageId(page.id);
+                              replaceInputRef.current?.click();
+                            }}
+                          >
+                            <Upload size={15} />
                           </button>
                           <button
                             type="button"
@@ -1542,24 +1742,17 @@ export function RateCardTemplatesPage({
                           >
                             <RotateCw size={15} />
                           </button>
-                          <button
-                            type="button"
-                            className="icon-button"
-                            title="Retake page"
-                            aria-label={`Retake page ${index + 1}`}
-                            onClick={() => retakeCameraPage(page.id)}
-                          >
-                            <Camera size={15} />
-                          </button>
-                          <button
-                            type="button"
-                            className="icon-button"
-                            title="Download image"
-                            aria-label={`Download page ${index + 1} image`}
-                            onClick={() => void downloadScannerPage(page)}
-                          >
-                            <Download size={15} />
-                          </button>
+                          {page.captured && (
+                            <button
+                              type="button"
+                              className="icon-button"
+                              title="Retake page"
+                              aria-label={`Retake page ${index + 1}`}
+                              onClick={() => retakeCameraPage(page.id)}
+                            >
+                              <Camera size={15} />
+                            </button>
+                          )}
                         </>
                       )}
                       <button
@@ -1604,70 +1797,6 @@ export function RateCardTemplatesPage({
                 autoFocus
               />
             </label>
-            {scannerPages.length > 0 && scannerPages.some((page) => page.type !== "application/pdf") && (
-              <div className="rate-document-enhancements">
-                <span className="eyebrow">IMAGE ENHANCEMENT</span>
-                <div className="rate-document-filter-list">
-                  {(["Original", "Auto Enhance", "Grayscale", "Black & White", "Color Enhancement"] as ScanFilter[]).map((filter) => (
-                    <button
-                      type="button"
-                      key={filter}
-                      className={selectedFilter === filter ? "selected" : ""}
-                      onClick={async () => {
-                        setSelectedFilter(filter);
-                        for (const page of scannerPages.filter((item) => item.type !== "application/pdf")) {
-                          await updateProcessedPage(page.id, { filter });
-                        }
-                      }}
-                    >
-                      {filter}
-                    </button>
-                  ))}
-                </div>
-                <label className="rate-document-range">
-                  <span><b>Brightness</b><small>{scannerPages.find((page) => page.type !== "application/pdf")?.brightness ?? 0}</small></span>
-                  <input
-                    type="range"
-                    min="-100"
-                    max="100"
-                    value={scannerPages.find((page) => page.type !== "application/pdf")?.brightness ?? 0}
-                    onChange={(event) => {
-                      const brightness = Number(event.target.value);
-                      setScannerPages((current) =>
-                        current.map((page) =>
-                          page.type !== "application/pdf" ? { ...page, brightness } : page,
-                        ),
-                      );
-                    }}
-                    onPointerUp={() => {
-                      const page = scannerPages.find((item) => item.type !== "application/pdf");
-                      if (page) void updateProcessedPage(page.id, { brightness: page.brightness });
-                    }}
-                  />
-                </label>
-                <label className="rate-document-range">
-                  <span><b>Contrast</b><small>{scannerPages.find((page) => page.type !== "application/pdf")?.contrast ?? 100}%</small></span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="200"
-                    value={scannerPages.find((page) => page.type !== "application/pdf")?.contrast ?? 100}
-                    onChange={(event) => {
-                      const contrast = Number(event.target.value);
-                      setScannerPages((current) =>
-                        current.map((page) =>
-                          page.type !== "application/pdf" ? { ...page, contrast } : page,
-                        ),
-                      );
-                    }}
-                    onPointerUp={() => {
-                      const page = scannerPages.find((item) => item.type !== "application/pdf");
-                      if (page) void updateProcessedPage(page.id, { contrast: page.contrast });
-                    }}
-                  />
-                </label>
-              </div>
-            )}
             <div className="rate-document-format-note">
               <Check size={15} />
               Images will be combined into one PDF when saved.
